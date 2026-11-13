@@ -1,16 +1,9 @@
 # Saage Free Trade Zone
 
-B2B international trade marketplace: React + TypeScript + Vite + Tailwind on Supabase.
+B2B international trade marketplace.
 
-## Setup
-1. `cp .env.example .env.local` and add the project's publishable key (Supabase dashboard, Project Settings, API).
-2. `npm install && npm run dev`
+## Test build (no backend)
+`public/index.html` is a self-contained test build with sample data. It needs no install, no build and no environment variables. Vercel serves it as-is (see `vercel.json`). Any email and password works on the login page; pick a role in the "Test as" dropdown.
 
-## Backend (Supabase project `pzwuarejywtnkyereufc`)
-Schema, RLS, RPCs, storage buckets and realtime are applied as migrations. Business logic runs in database functions (orders, RFQs, quotations, refunds, disputes, admin review). The frontend never decides payment success.
-
-## Built
-Auth, business profiles and verification submission, marketplace search and filters, product detail (quote, order, message, save), RFQs with quotations, orders, realtime messaging with reporting, dashboard, admin verification.
-
-## Still to build
-Flutterwave edge functions and webhook, product creation UI, document upload UI, shipment tracking UI, reviews, disputes UI, notifications UI, currency conversion function, remaining admin screens.
+## Backend-connected app (not deployed yet)
+The React + TypeScript + Supabase app in `src/` is connected to the Supabase project and needs `VITE_SUPABASE_PUBLISHABLE_KEY`. It will replace the test build once testing is done.
