@@ -2,4 +2,13 @@
 @tailwind components;
 @tailwind utilities;
 
-body { @apply bg-surface text-ink font-sans; }
+body { @apply bg-surface text-ink font-sans antialiased; -webkit-tap-highlight-color: transparent; }
+.safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
+.safe-top { padding-top: env(safe-area-inset-top); }
+
+@media (max-width: 640px) {
+  input, select, textarea { font-size: 16px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+}
