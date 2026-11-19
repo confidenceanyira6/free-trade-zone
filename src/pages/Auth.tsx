@@ -3,6 +3,8 @@ import { Link, useNavigate } from 'react-router-dom'
 import { Building2, CheckCircle2, Eye, EyeOff, Lock, Mail, MapPin, Phone, User } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { supabase } from '../lib/supabase'
+import { useAuth } from '../lib/auth'
+import { DEMO_USERS } from '../lib/demo-auth'
 import { ROLE_TYPE, Role } from '../lib/roles'
 import { Logo } from '../components/Logo'
 import { btn, ErrorMsg, input } from '../ui'
@@ -48,6 +50,7 @@ async function oauth(provider: 'google' | 'apple', setErr: (s: string) => void) 
 
 export function Login() {
   const nav = useNavigate()
+  const { demoLogin } = useAuth()
   const [err, setErr] = useState<string | null>(null)
   const [info, setInfo] = useState<string | null>(null)
   const [email, setEmail] = useState('')
@@ -55,7 +58,9 @@ export function Login() {
   const [busy, setBusy] = useState(false)
 
   async function submit(e: FormEvent) {
-    e.preventDefault(); setBusy(true); setErr(null)
+    e.preventDefault(); setErr(null)
+    if (demoLogin(email, password)) { nav('/'); return }
+    setBusy(true)
     const { error } = await supabase.auth.signInWithPassword({ email, password })
     setBusy(false)
     if (error) setErr(error.message); else nav('/')
@@ -80,6 +85,14 @@ export function Login() {
       <div className="grid grid-cols-2 gap-3">
         <button type="button" className="rounded-xl border border-slate-200 py-2.5 text-sm font-semibold hover:bg-slate-50" onClick={() => oauth('google', setErr)}>Google</button>
         <button type="button" className="rounded-xl border border-slate-200 py-2.5 text-sm font-semibold hover:bg-slate-50" onClick={() => oauth('apple', setErr)}>Apple</button>
+      </div>
+      <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+        <p className="mb-2 font-semibold">Test accounts (work without a backend)</p>
+        <div className="grid grid-cols-2 gap-2">
+          {DEMO_USERS.map((u) => (
+            <button key={u.email} type="button" className="rounded-lg bg-white py-2 font-semibold capitalize ring-1 ring-amber-200" onClick={() => { setEmail(u.email); setPassword(u.password) }}>Fill {u.role === 'seller' ? 'supplier' : 'buyer'}</button>
+          ))}
+        </div>
       </div>
       <p className="mt-6 text-center text-sm">Don't have an account? <Link to="/register" className="font-semibold text-emerald">Sign Up</Link></p>
     </Shell>
