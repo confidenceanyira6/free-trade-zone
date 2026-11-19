@@ -7,8 +7,6 @@ import Home from './pages/Home'
 import { Login, Register } from './pages/Auth'
 import Marketplace from './pages/Marketplace'
 import ProductDetail from './pages/ProductDetail'
-import Rfqs from './pages/Rfqs'
-import RfqDetail from './pages/RfqDetail'
 import Orders from './pages/Orders'
 import Messages from './pages/Messages'
 import Dashboard from './pages/Dashboard'
@@ -17,13 +15,14 @@ import { ConfirmPay, ConfirmRelease, PlaceOrder, SendAgent, TrackOrder } from '.
 import { WalletPage, Withdraw } from './pages/Wallet'
 import { SellerOrders, SellerProducts } from './pages/SellerPages'
 import { AgentEarnings, AgentTask, AgentTasks } from './pages/AgentPages'
-import { Disputes, Notifications, Profile, Settings, Support } from './pages/Account'
+import { Disputes, Notifications, Profile, Settings, Support, Verification } from './pages/Account'
 
 function Guard({ children, admin }: { children: ReactNode; admin?: boolean }) {
   const { session, loading, isAdmin } = useAuth()
   if (loading) return <Loading />
   if (!session) return <Navigate to="/login" replace />
-  if (admin && !isAdmin) return <Navigate to="/dashboard" replace />
+  // Test accounts may open the admin preview; real accounts need the admin flag.
+  if (admin && !isAdmin && !(session.user as any).demo) return <Navigate to="/dashboard" replace />
   return <>{children}</>
 }
 
@@ -38,8 +37,6 @@ export default function App() {
         <Route path="register" element={<Register />} />
         <Route path="marketplace" element={<Marketplace />} />
         <Route path="products/:id" element={<ProductDetail />} />
-        <Route path="rfqs" element={G(<Rfqs />)} />
-        <Route path="rfqs/:id" element={G(<RfqDetail />)} />
         <Route path="orders" element={G(<Orders />)} />
         <Route path="messages" element={G(<Messages />)} />
         <Route path="dashboard" element={G(<Dashboard />)} />
@@ -62,6 +59,7 @@ export default function App() {
         <Route path="settings" element={G(<Settings />)} />
         <Route path="support" element={G(<Support />)} />
         <Route path="disputes" element={G(<Disputes />)} />
+        <Route path="verification" element={G(<Verification />)} />
         <Route path="profile" element={G(<Profile />)} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
