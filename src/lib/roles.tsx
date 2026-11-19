@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react'
-import { Home, Package, ClipboardList, Wallet, User, LayoutDashboard, ListChecks, Truck, Coins } from 'lucide-react'
+import { Home, ClipboardList, Wallet, User, MessageSquare, LayoutDashboard, ListChecks, Truck, Coins } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useAuth } from './auth'
 
 export type Role = 'buyer' | 'seller' | 'agent'
 
-// Existing backend `account_type` values that each new role maps onto.
+// Existing backend `account_type` values that each role maps onto.
 export const ROLE_TYPE: Record<Role, string> = { buyer: 'importer', seller: 'supplier', agent: 'logistics' }
 
 const KEY = 'saage_preview_role'
@@ -35,19 +35,20 @@ export function useRole(): Role {
 
 export type NavItem = { to: string; label: string; icon: LucideIcon; end?: boolean }
 
+// Bottom navigation, matching the app mock-up.
 export const NAV: Record<Role, NavItem[]> = {
   buyer: [
     { to: '/', label: 'Home', icon: Home, end: true },
-    { to: '/marketplace', label: 'Products', icon: Package },
     { to: '/orders', label: 'Orders', icon: ClipboardList },
     { to: '/wallet', label: 'Wallet', icon: Wallet },
+    { to: '/messages', label: 'Messages', icon: MessageSquare },
     { to: '/profile', label: 'Profile', icon: User },
   ],
   seller: [
-    { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { to: '/seller/products', label: 'Products', icon: Package },
+    { to: '/dashboard', label: 'Home', icon: Home },
     { to: '/seller/orders', label: 'Orders', icon: ClipboardList },
     { to: '/wallet', label: 'Wallet', icon: Wallet },
+    { to: '/messages', label: 'Messages', icon: MessageSquare },
     { to: '/profile', label: 'Profile', icon: User },
   ],
   agent: [
@@ -57,4 +58,11 @@ export const NAV: Record<Role, NavItem[]> = {
     { to: '/agent/earnings', label: 'Earnings', icon: Coins },
     { to: '/profile', label: 'Profile', icon: User },
   ],
+}
+
+// Slide-out menu (hamburger) per role.
+export const MENU: Record<Role, [string, string][]> = {
+  buyer: [['Dashboard', '/dashboard'], ['Browse Products', '/marketplace'], ['My Orders', '/orders'], ['Inspection Agents', '/order/agent'], ['Wallet', '/wallet'], ['Messages', '/messages'], ['Disputes', '/disputes'], ['Notifications', '/notifications'], ['Business Verification', '/verification'], ['Settings', '/settings'], ['Help & Support', '/support']],
+  seller: [['Dashboard', '/dashboard'], ['My Products', '/seller/products'], ['Manage Orders', '/seller/orders'], ['Wallet', '/wallet'], ['Messages', '/messages'], ['Disputes', '/disputes'], ['Notifications', '/notifications'], ['Business Verification', '/verification'], ['Settings', '/settings'], ['Help & Support', '/support']],
+  agent: [['Dashboard', '/dashboard'], ['Tasks', '/agent/tasks'], ['Deliveries', '/agent/deliveries'], ['Earnings', '/agent/earnings'], ['Messages', '/messages'], ['Notifications', '/notifications'], ['Agent Verification', '/verification'], ['Settings', '/settings'], ['Help & Support', '/support']],
 }

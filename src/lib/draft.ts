@@ -3,7 +3,7 @@ export type Draft = { productId: string; qty: number; mode: 'agent' | 'direct'; 
 
 const K = 'saage_order_draft'
 export const defaultDraft: Draft = {
-  productId: 'p1', qty: 100, mode: 'agent', note: '', address: 'Lagos, Nigeria', agentId: 'a1',
+  productId: 'p1', qty: 500, mode: 'agent', note: '', address: 'Lagos, Nigeria', agentId: 'a1',
   checks: ['Quality Check', 'Quantity Check', 'Photos & Report'],
 }
 

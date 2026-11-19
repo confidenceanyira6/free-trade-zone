@@ -1,10 +1,14 @@
 import { ReactNode } from 'react'
 
-export const btn = 'inline-flex items-center justify-center gap-2 rounded-xl bg-emerald px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-leaf active:scale-[.98] disabled:opacity-50'
-export const btn2 = 'inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-ink transition hover:bg-slate-50 active:scale-[.98] disabled:opacity-50'
-export const btnAccent = 'inline-flex items-center justify-center gap-2 rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:brightness-95 active:scale-[.98] disabled:opacity-50'
-export const input = 'w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm transition focus:border-emerald focus:outline-none focus:ring-2 focus:ring-emerald/30'
-export const card = 'rounded-2xl border border-slate-100 bg-white p-4 shadow-sm'
+export const btn = 'inline-flex items-center justify-center gap-2 rounded-xl bg-emerald px-4 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-leaf active:scale-[.98] disabled:opacity-50'
+export const btn2 = 'inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-bold text-ink transition hover:bg-slate-50 active:scale-[.98] disabled:opacity-50'
+export const btnAccent = 'inline-flex items-center justify-center gap-2 rounded-xl bg-accent px-4 py-3 text-sm font-bold text-white shadow-sm transition hover:brightness-95 active:scale-[.98] disabled:opacity-50'
+// small buttons
+export const btnS = 'inline-flex items-center justify-center gap-1 rounded-lg bg-emerald px-3 py-1.5 text-xs font-bold text-white transition active:scale-95 disabled:opacity-50'
+export const btnSAccent = 'inline-flex items-center justify-center gap-1 rounded-lg bg-accent px-3 py-1.5 text-xs font-bold text-white transition active:scale-95 disabled:opacity-50'
+export const btnS2 = 'inline-flex items-center justify-center gap-1 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-ink transition active:scale-95 disabled:opacity-50'
+export const input = 'w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm transition focus:border-emerald focus:outline-none focus:ring-2 focus:ring-emerald/30'
+export const card = 'rounded-2xl border border-slate-200 bg-white p-4'
 
 export const ACCOUNT_TYPES = ['importer', 'exporter', 'manufacturer', 'supplier', 'wholesaler', 'distributor', 'logistics', 'investor']
 export const CURRENCIES = ['NGN', 'USD', 'GBP', 'EUR', 'CNY', 'JPY', 'ZAR', 'KES', 'GHS', 'AED']
