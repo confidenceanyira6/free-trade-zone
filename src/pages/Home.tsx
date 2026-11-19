@@ -1,77 +1,70 @@
-import { FormEvent, useState } from 'react'
 import { Link, Navigate, useNavigate } from 'react-router-dom'
-import { ArrowRight, Building2, Cog, Droplets, Search, TreePine, UserCheck, Wallet, Wheat, ClipboardList, Boxes, MoreHorizontal } from 'lucide-react'
+import { ArrowRight, Boxes, Building2, ChevronLeft, ClipboardList, MoreHorizontal, UserCheck, Wallet } from 'lucide-react'
 import { useAuth } from '../lib/auth'
 import { useRole } from '../lib/roles'
 import { Logo } from '../components/Logo'
-import { SectionTitle, Thumb, Tile } from '../components/kit'
-import { btnAccent, Loading } from '../ui'
+import { Art, HeroArt, SplashArt } from '../components/Art'
+import { SectionTitle, Tile } from '../components/kit'
+import { btnAccent, btn2, Loading } from '../ui'
 
 function Welcome() {
-  const icons = [TreePine, Droplets, Wheat, Cog]
+  const nav = useNavigate()
   return (
-    <div className="relative flex min-h-screen flex-col items-center justify-between overflow-hidden bg-gradient-to-b from-forest via-[#0d4a2a] to-[#1d2f1a] px-8 pb-10 pt-16 text-center text-white">
-      <div className="pointer-events-none absolute -right-24 top-10 h-72 w-72 rounded-full bg-emerald/30 blur-3xl" />
-      <div className="pointer-events-none absolute -left-24 bottom-32 h-72 w-72 rounded-full bg-accent/20 blur-3xl" />
-      <div className="animate-fade-up relative space-y-4">
-        <Logo size={96} dark stacked />
-        <p className="text-lg font-medium text-white/90">Trade Globally.<br />Grow Together.</p>
-        <p className="text-xs uppercase tracking-widest text-white/60">Raw materials · Bulk trade · Trusted agents</p>
+    <div className="relative flex min-h-screen flex-1 flex-col bg-gradient-to-b from-[#0b3d22] via-[#0d4a2a] to-[#07301a] text-white md:min-h-full">
+      <button aria-label="Back" onClick={() => nav(-1)} className="absolute left-3 top-4 z-10 rounded-full p-2"><ChevronLeft size={22} /></button>
+      <div className="animate-fade-up flex flex-col items-center px-6 pt-14 text-center">
+        <Logo size={104} dark stacked />
+        <p className="mt-4 text-lg font-medium leading-snug text-white/95">Trade Globally.<br />Grow Together.</p>
       </div>
-      <div className="relative my-8 flex gap-3">
-        {icons.map((I, i) => <span key={i} className="grid h-14 w-14 place-items-center rounded-2xl bg-white/10 ring-1 ring-white/20"><I size={26} /></span>)}
-      </div>
-      <div className="relative w-full max-w-sm space-y-3">
-        <Link to="/register" className={`${btnAccent} w-full py-3.5 text-base`}>Get Started</Link>
-        <Link to="/login" className="inline-flex w-full items-center justify-center rounded-xl border-2 border-white/80 py-3 text-base font-semibold hover:bg-white/10">Sign In</Link>
-        <Link to="/marketplace" className="block pt-1 text-sm text-white/80 underline underline-offset-4">Browse the marketplace as a guest</Link>
-        <p className="pt-3 text-xs text-white/60">Trusted • Secure • Transparent</p>
+      <div className="flex flex-1 items-end px-2"><SplashArt className="w-full" /></div>
+      <div className="space-y-3 px-6 pb-8 pt-4">
+        <Link to="/register" className={`${btnAccent} w-full`}>Get Started</Link>
+        <Link to="/login" className="inline-flex w-full items-center justify-center rounded-xl border-2 border-white/90 py-3 text-sm font-bold hover:bg-white/10">Sign In</Link>
+        <p className="pt-1 text-center text-xs text-white/70">Trusted • Secure • Transparent</p>
+        <Link to="/marketplace" className="block text-center text-xs text-white/60 underline underline-offset-4">Browse as guest</Link>
       </div>
     </div>
   )
 }
 
 function BuyerHome() {
-  const nav = useNavigate()
-  const [q, setQ] = useState('')
-  const go = (e: FormEvent) => { e.preventDefault(); nav(`/marketplace${q.trim() ? `?q=${encodeURIComponent(q.trim())}` : ''}`) }
-  const top = [['Timber', 'timber'], ['Red Oil', 'oil'], ['Cocoa', 'grain'], ['Rubber', 'rubber'], ['Charcoal', 'charcoal'], ['Coffee', 'coffee']]
+  const top: [string, string][] = [['Timber', 'timber'], ['Red Oil', 'oil'], ['Cocoa', 'cocoa'], ['Charcoal', 'charcoal']]
   return (
     <div>
-      <form onSubmit={go} className="relative mb-4" role="search">
-        <Search size={18} className="absolute left-3 top-3 text-slate-400" />
-        <input aria-label="Search raw materials" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search raw materials…" className="w-full rounded-full border border-slate-200 bg-white py-2.5 pl-10 pr-4 text-sm focus:border-emerald focus:outline-none focus:ring-2 focus:ring-emerald/30" />
-      </form>
-
-      <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-forest via-[#0d5a31] to-emerald p-6 text-white shadow-lg">
-        <TreePine className="absolute -bottom-4 -right-3 h-36 w-36 text-white/10" />
-        <h1 className="text-2xl font-extrabold leading-tight md:text-4xl">Global Trade<br />in Raw Materials</h1>
-        <p className="mt-2 text-sm text-white/80">Buy • Sell • Trade in Bulk</p>
-        <Link to="/marketplace" className={`${btnAccent} mt-4`}>Explore Products <ArrowRight size={16} /></Link>
+      <section className="relative h-44 overflow-hidden rounded-2xl bg-forest text-white">
+        <HeroArt className="absolute inset-0 h-full w-full" />
+        <div className="absolute inset-0 bg-gradient-to-r from-forest/95 via-forest/60 to-transparent" />
+        <div className="relative p-4">
+          <h1 className="text-2xl font-extrabold leading-tight">Global Trade<br />in Raw Materials</h1>
+          <p className="mt-1 text-xs text-white/90">Buy • Sell • Trade in Bulk</p>
+          <Link to="/marketplace" className="mt-3 inline-flex items-center gap-1 rounded-lg bg-emerald px-3 py-2 text-xs font-bold">Explore Products <ArrowRight size={14} /></Link>
+        </div>
       </section>
 
-      <div className="mt-5 grid grid-cols-3 gap-3 md:grid-cols-6">
+      <div className="mt-4 grid grid-cols-3 gap-3">
         <Tile to="/marketplace" icon={Boxes} label="Browse Products" tint="bg-orange-100 text-accent" />
         <Tile to="/marketplace" icon={Building2} label="Find Suppliers" tint="bg-violet-100 text-violet-600" />
-        <Tile to="/orders" icon={ClipboardList} label="My Orders" tint="bg-amber-100 text-amber-600" />
+        <Tile to="/orders" icon={ClipboardList} label="My Orders" tint="bg-orange-100 text-accent" />
         <Tile to="/order/agent" icon={UserCheck} label="Agents" tint="bg-emerald/10 text-emerald" />
         <Tile to="/wallet" icon={Wallet} label="Wallet" tint="bg-blue-100 text-blue-600" />
-        <Tile to="/profile" icon={MoreHorizontal} label="More" tint="bg-indigo-100 text-indigo-600" />
+        <Tile to="/dashboard" icon={MoreHorizontal} label="More" tint="bg-indigo-100 text-indigo-600" />
       </div>
 
       <SectionTitle title="Top Raw Materials" to="/marketplace" />
-      <div className="-mx-4 flex gap-3 overflow-x-auto px-4 pb-2">
+      <div className="grid grid-cols-4 gap-2">
         {top.map(([name, kind]) => (
-          <Link key={name} to={`/marketplace?q=${encodeURIComponent(name)}`} className="flex shrink-0 flex-col items-center gap-1 text-xs font-semibold">
-            <Thumb kind={kind} className="h-20 w-20" />{name}
+          <Link key={name} to={`/marketplace?q=${encodeURIComponent(name)}`} aria-label={name} className="block">
+            <Art kind={kind} className="aspect-square w-full rounded-lg" />
           </Link>
         ))}
       </div>
 
-      <SectionTitle title="Your active order" to="/order/track" action="Track" />
-      <Link to="/order/track" className="flex items-center gap-3 rounded-2xl bg-white p-3 shadow-sm ring-1 ring-slate-100">
-        <Thumb kind="timber" /><div className="flex-1"><p className="font-semibold">Timber (Teak)</p><p className="text-xs text-muted">Order #SZF8723 · preview</p></div><span className="text-xs font-semibold text-accent">Awaiting confirmation ›</span>
+      <Link to="/order/track" className="mt-5 flex items-center gap-3 rounded-xl border border-slate-200 p-3">
+        <Art kind="timber" className="h-12 w-12 rounded-lg" />
+        <div className="flex-1"><p className="text-sm font-bold">Timber (Teak)</p><p className="text-xs text-muted">Order #SZF8723</p></div>
+        <span className="text-xs font-bold text-accent">Track ›</span>
       </Link>
+      <Link to="/marketplace" className={`${btn2} mt-4 w-full`}>Browse all raw materials</Link>
     </div>
   )
 }

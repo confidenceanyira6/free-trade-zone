@@ -1,71 +1,89 @@
 import { Link } from 'react-router-dom'
-import { Banknote, CheckCircle2, ClipboardList, Clock, Package, ShieldCheck, Truck, Wallet } from 'lucide-react'
-import { DEMO_ORDER, DEMO_PRODUCTS, DEMO_TASKS, orderBreakdown } from '../lib/demo'
+import { Boxes, CheckCircle2, ClipboardList, Clock, Package, ShieldCheck, ShoppingBag, Truck, Wallet } from 'lucide-react'
+import { Art } from '../components/Art'
+import { SectionTitle, Stat } from '../components/kit'
+import { DEMO_PRODUCTS, DEMO_TASKS } from '../lib/demo'
 import { ngn } from '../lib/fees'
 import { Role } from '../lib/roles'
-import { DemoBanner, SectionTitle, Stat, Thumb } from '../components/kit'
-import { Badge, btn, btnAccent, card } from '../ui'
+import { btn, btnAccent, btnS2, card } from '../ui'
 
-function WalletCard({ label, amount, tone }: { label: string; amount: number; tone: 'green' | 'orange' }) {
+function WalletCard({ label, amount, accent }: { label: string; amount: number; accent?: boolean }) {
   return (
-    <div className={`${card} flex items-center justify-between`}>
-      <div><p className="text-xs font-medium text-muted">{label}</p><p className="text-2xl font-extrabold">{ngn(amount)}</p></div>
-      <Link to="/wallet/withdraw" className={tone === 'orange' ? btnAccent : btn}>Withdraw</Link>
+    <div className={card}>
+      <p className="text-xs font-medium text-muted">{label}</p>
+      <div className="mt-1 flex items-center justify-between">
+        <p className="text-2xl font-extrabold">{ngn(amount)}</p>
+        <Link to="/wallet/withdraw" className={`${accent ? btnAccent : btn} px-5 py-2`}>Withdraw</Link>
+      </div>
     </div>
   )
 }
 
-export default function RoleDash({ role }: { role: Role }) {
-  const ob = orderBreakdown(DEMO_ORDER.productId, DEMO_ORDER.qty, DEMO_ORDER.agentId)
+const Row = ({ to, kind, title, sub, tag, tagClass }: { to: string; kind: string; title: string; sub: string; tag: string; tagClass: string }) => (
+  <Link to={to} className="flex items-center gap-3 py-2">
+    <Art kind={kind} className="h-14 w-14 rounded-lg" />
+    <div className="flex-1"><p className="text-sm font-bold">{title}</p><p className="text-xs text-muted">{sub}</p><p className={`text-xs font-bold ${tagClass}`}>{tag}</p></div>
+  </Link>
+)
 
+export default function RoleDash({ role }: { role: Role }) {
   if (role === 'seller') return (
-    <div className="space-y-4">
-      <DemoBanner />
-      <div className="grid grid-cols-2 gap-3"><Stat label="Total Sales" value="5" icon={Banknote} /><Stat label="Pending Orders" value="2" icon={Clock} tone="text-accent" /></div>
-      <WalletCard label="Available Balance" amount={3200000} tone="orange" />
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <Stat label="Total orders" value="7" icon={ClipboardList} /><Stat label="Active orders" value="2" icon={Truck} />
-        <Stat label="Completed" value="4" icon={CheckCircle2} /><Stat label="Pending payments" value={ngn(ob.b.sellerPayout)} icon={ShieldCheck} sub="In escrow, not withdrawable" />
+    <div className="space-y-3">
+      <div className="grid grid-cols-2 gap-3">
+        <Stat label="Total Sales" value="5" icon={ShoppingBag} tint="bg-orange-100 text-accent" />
+        <Stat label="Pending Orders" value="2" icon={Clock} tint="bg-orange-100 text-accent" />
       </div>
+      <WalletCard label="Wallet Balance" amount={3200000} accent />
       <SectionTitle title="Recent Orders" to="/seller/orders" />
-      <Link to="/seller/orders" className={`${card} flex items-center gap-3`}><Thumb kind="timber" /><div className="flex-1"><p className="font-semibold">Timber (Teak)</p><p className="text-xs text-muted">Order {DEMO_ORDER.ref}</p></div><Badge tone="amber">Awaiting agent</Badge></Link>
+      <Row to="/seller/orders" kind="oil" title="Red Oil" sub="Order #SZF8721" tag="Awaiting Agent" tagClass="text-emerald" />
+      <div className="grid grid-cols-2 gap-3 pt-2">
+        <Stat label="Total orders" value="7" icon={ClipboardList} tint="bg-orange-100 text-accent" />
+        <Stat label="Completed" value="4" icon={CheckCircle2} tint="bg-orange-100 text-accent" />
+        <Stat label="Pending payments" value={ngn(125000000)} icon={ShieldCheck} tint="bg-orange-100 text-accent" sub="In escrow, not withdrawable" />
+        <Stat label="Active orders" value="2" icon={Truck} tint="bg-orange-100 text-accent" />
+      </div>
       <SectionTitle title="Best-selling products" to="/seller/products" />
-      <div className="space-y-2">{DEMO_PRODUCTS.slice(0, 3).map((p, i) => (
-        <div key={p.id} className={`${card} flex items-center gap-3 py-3`}><Thumb kind={p.kind} className="h-12 w-12" /><p className="flex-1 text-sm font-semibold">{p.name}</p><span className="text-xs text-muted">{[12, 8, 5][i]} orders</span></div>
+      <div className="divide-y divide-slate-100">{DEMO_PRODUCTS.slice(0, 3).map((p, i) => (
+        <div key={p.id} className="flex items-center gap-3 py-2"><Art kind={p.kind} className="h-10 w-10 rounded-lg" /><p className="flex-1 text-sm font-semibold">{p.name}</p><span className="text-xs text-muted">{[12, 8, 5][i]} orders</span></div>
       ))}</div>
+      <div className="grid grid-cols-2 gap-2 pt-1"><Link to="/seller/products" className={btnS2}><Package size={14} />My Products</Link><Link to="/verification" className={btnS2}>Business verification</Link></div>
     </div>
   )
 
   if (role === 'agent') return (
-    <div className="space-y-4">
-      <DemoBanner />
-      <div className="grid grid-cols-2 gap-3"><Stat label="My Deliveries" value="8" icon={Truck} /><Stat label="Earnings" value={ngn(420000)} icon={Wallet} /></div>
+    <div className="space-y-3">
+      <div className="grid grid-cols-2 gap-3">
+        <Stat label="My Deliveries" value="8" icon={Truck} />
+        <Stat label="Earnings" value={ngn(420000)} icon={Wallet} />
+      </div>
       <Link to="/agent/earnings" className={`${btn} w-full`}>View Performance</Link>
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+      <SectionTitle title="Recent Tasks" to="/agent/tasks" />
+      <Row to="/agent/tasks/k1" kind="timber" title="Inspect Timber" sub="Order #SZF8723" tag="In Progress" tagClass="text-emerald" />
+      <div className="grid grid-cols-2 gap-3 pt-2">
         <Stat label="Available tasks" value={String(DEMO_TASKS.filter((t) => t.status === 'available').length)} icon={ClipboardList} />
         <Stat label="Active inspections" value={String(DEMO_TASKS.filter((t) => t.status === 'active').length)} icon={ShieldCheck} />
         <Stat label="Awaiting delivery" value={String(DEMO_TASKS.filter((t) => t.status === 'delivery').length)} icon={Truck} />
-        <Stat label="Pending commissions" value={ngn(450000)} icon={Clock} tone="text-accent" />
+        <Stat label="Pending commissions" value={ngn(100000)} icon={Clock} tone="text-accent" />
       </div>
-      <WalletCard label="Available withdrawal balance" amount={320000} tone="green" />
-      <SectionTitle title="Recent Tasks" to="/agent/tasks" />
-      {DEMO_TASKS.slice(0, 2).map((t) => (
-        <Link key={t.id} to={`/agent/tasks/${t.id}`} className={`${card} flex items-center gap-3`}><Package className="text-emerald" /><div className="flex-1"><p className="font-semibold">{t.product}</p><p className="text-xs text-muted">Order {t.order} · earn {ngn(t.commission)}</p></div><Badge tone={t.status === 'active' ? 'green' : 'amber'}>{t.status}</Badge></Link>
-      ))}
+      <WalletCard label="Available withdrawal balance" amount={320000} />
     </div>
   )
 
   return (
-    <div className="space-y-4">
-      <DemoBanner />
-      <div className="grid grid-cols-2 gap-3"><Stat label="Total Orders" value="3" icon={ClipboardList} /><Stat label="On Hold (escrow)" value={ngn(ob.b.total)} icon={ShieldCheck} tone="text-accent" /></div>
-      <WalletCard label="Wallet Balance" amount={850000} tone="green" />
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
-        <Stat label="Active orders" value="1" /><Stat label="Awaiting inspection" value="0" /><Stat label="Awaiting delivery" value="0" /><Stat label="Awaiting confirmation" value="1" tone="text-accent" /><Stat label="Completed" value="2" />
+    <div className="space-y-3">
+      <div className="grid grid-cols-2 gap-3">
+        <Stat label="Total Orders" value="3" icon={ClipboardList} />
+        <Stat label="On Hold" value={ngn(2500000)} icon={ShieldCheck} />
       </div>
+      <WalletCard label="Wallet Balance" amount={850000} />
       <SectionTitle title="Recent Activity" to="/orders" />
-      <Link to="/order/track" className={`${card} flex items-center gap-3`}><Thumb kind="timber" /><div className="flex-1"><p className="font-semibold">Timber (Teak)</p><p className="text-xs text-muted">Order {DEMO_ORDER.ref}</p></div><Badge tone="orange">Awaiting confirmation</Badge></Link>
-      <Link to="/marketplace" className={`${btnAccent} w-full`}>Place a new bulk order</Link>
+      <Row to="/order/track" kind="timber" title="Timber (Teak)" sub="Order #SZF8723" tag="Awaiting Agent" tagClass="text-emerald" />
+      <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pt-2">
+        {[['Active', 1], ['Awaiting inspection', 1], ['Awaiting delivery', 0], ['Awaiting confirmation', 1], ['Completed', 2]].map(([k, v]) => (
+          <span key={k} className="whitespace-nowrap rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold">{k}: <b>{v}</b></span>
+        ))}
+      </div>
+      <Link to="/marketplace" className={`${btnAccent} w-full`}><Boxes size={16} />Place a new bulk order</Link>
     </div>
   )
 }
