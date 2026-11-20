@@ -1,9 +1,11 @@
 // Keeps the in-progress bulk order between the order screens (session only).
-export type Draft = { productId: string; qty: number; mode: 'agent' | 'direct'; note: string; address: string; agentId: string; checks: string[] }
+export type OwnAgent = { name: string; contact: string; location: string }
+export type Draft = { productId: string; qty: number; mode: 'agent' | 'direct'; note: string; address: string; agent: OwnAgent; checks: string[] }
 
 const K = 'saage_order_draft'
 export const defaultDraft: Draft = {
-  productId: 'p1', qty: 500, mode: 'agent', note: '', address: 'Lagos, Nigeria', agentId: 'a1',
+  productId: 'p1', qty: 500, mode: 'agent', note: '', address: 'Lagos, Nigeria',
+  agent: { name: '', contact: '', location: '' },
   checks: ['Quality Check', 'Quantity Check', 'Photos & Report'],
 }
 
