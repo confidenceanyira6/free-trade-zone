@@ -37,7 +37,8 @@ export default function Admin() {
       {tab === 'Overview' && (
         <div className="grid grid-cols-2 gap-3">
           <Stat label="Buyers" value="640" /><Stat label="Sellers" value="420" /><Stat label="Agents" value="224" /><Stat label="Transactions" value={String(TXS.length)} />
-          <Stat label="Held in escrow" value={ngn(sum((b) => b.buyerTotal, held))} tone="text-accent" /><Stat label="Platform fees ({PLATFORM_FEE_PCT}%)".replace('{PLATFORM_FEE_PCT}', String(PLATFORM_FEE_PCT))} value={ngn(sum((b) => b.platformFee, TXS.filter((t) => t.stage >= 10)))} />
+          <Stat label="Held in escrow" value={ngn(sum((b) => b.buyerTotal, held))} tone="text-accent" />
+          <Stat label={`Platform fees (${PLATFORM_FEE_PCT}%)`} value={ngn(sum((b) => b.platformFee, TXS.filter((t) => t.stage >= 10)))} />
           <Stat label="Open disputes" value={String(disputes.length)} tone="text-red-600" /><Stat label="On hold" value={String(TXS.filter((t) => t.hold).length)} />
         </div>
       )}
@@ -96,7 +97,7 @@ export default function Admin() {
         </Section>
       )}
 
-      <ConfirmDialog open={!!act} title={act?.title ?? ''} confirmLabel="Submit" body={<div className="space-y-2"><p>Every admin action needs a reason and is logged.</p><textarea className={input} rows={3} placeholder="Reason / notes (required)" aria-label="Reason" value={note} onChange={(e) => setNote(e.target.value)} /></div>} onCancel={() => setAct(null)}
+      <ConfirmDialog open={!!act} title={act?.title ?? ''} confirmLabel="Submit" body={<div className="space-y-2"><p>Every admin action needs a reason and is logged.</p><textarea className={input} rows={3} placeholder="Reason / notes (required, 5+ characters)" aria-label="Reason" value={note} onChange={(e) => setNote(e.target.value)} /></div>} onCancel={() => setAct(null)}
         onConfirm={async () => { if (note.trim().length < 5) return; const a = act!; setAct(null); await run(() => a.call(note), a.ok) }} />
     </div>
   )

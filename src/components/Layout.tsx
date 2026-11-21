@@ -3,6 +3,9 @@ import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-do
 import { Bell, ChevronRight, LogOut, Menu, X } from 'lucide-react'
 import { useAuth } from '../lib/auth'
 import { MENU, NAV, useRole } from '../lib/roles'
+import { useCollection } from '../lib/repo'
+import { SEED_NOTES } from '../lib/fixtures'
+import type { Note } from '../lib/types'
 import { Logo } from './Logo'
 
 // Every screen renders inside a phone-shaped frame (full screen on phones).
@@ -22,7 +25,9 @@ export default function Layout() {
   const { pathname } = useLocation()
   const nav = useNavigate()
   const [menu, setMenu] = useState(false)
+  const [notes] = useCollection<Note>('notes', SEED_NOTES)
   useEffect(() => { setMenu(false) }, [pathname])
+  const unread = notes.filter((n) => !n.read).length
 
   const isDemo = !!(session?.user as any)?.demo
   const bare = !session && ['/', '/login', '/register'].includes(pathname)
@@ -39,12 +44,15 @@ export default function Layout() {
   const items = MENU[role]
 
   const bell = (
-    <Link to="/notifications" aria-label="Notifications" className="relative rounded-full p-2"><Bell size={20} /><span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-accent ring-2 ring-white/60" /></Link>
+    <Link to="/notifications" aria-label={`Notifications${unread ? `, ${unread} unread` : ''}`} className="relative rounded-full p-2">
+      <Bell size={20} />
+      {unread > 0 && <span className="absolute right-0.5 top-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-accent px-1 text-[10px] font-bold text-white ring-2 ring-white/60">{unread}</span>}
+    </Link>
   )
 
   return (
     <Frame>
-      {isDemo && <div className="bg-amber-100 px-3 py-1 text-center text-[11px] font-semibold text-amber-800">Test mode · demo data, no real payments</div>}
+      {isDemo && <div className="bg-amber-100 px-3 py-1 text-center text-[11px] font-semibold text-amber-800">Test mode · sample data, no real payments</div>}
 
       {showBar && (
         <header className={`safe-top sticky top-0 z-30 flex items-center gap-2 px-3 py-2.5 text-white ${barBg}`}>
@@ -98,7 +106,7 @@ export default function Layout() {
               {items.map(([label, to]) => (
                 <li key={to}><Link to={to} className="flex items-center justify-between border-b border-slate-100 py-3 text-sm font-semibold">{label}<ChevronRight size={16} className="text-slate-400" /></Link></li>
               ))}
-              {(isAdmin || isDemo) && <li><Link to="/admin" className="flex items-center justify-between border-b border-slate-100 py-3 text-sm font-semibold text-accent">Admin dashboard (preview)<ChevronRight size={16} /></Link></li>}
+              {(isAdmin || isDemo) && <li><Link to="/admin" className="flex items-center justify-between border-b border-slate-100 py-3 text-sm font-semibold text-accent">Admin console (preview)<ChevronRight size={16} /></Link></li>}
             </ul>
             <button className="mt-4 flex items-center gap-2 py-3 text-sm font-bold text-red-600" onClick={async () => { await signOut(); nav('/') }}><LogOut size={18} />Log Out</button>
           </aside>

@@ -15,7 +15,7 @@ function readOverride(): Role | null {
   try { return localStorage.getItem(KEY) as Role | null } catch { return null }
 }
 
-/** Lets a signed-in user preview the buyer / seller / agent experience. */
+/** Lets a signed-in test user preview the buyer / seller / agent experience. */
 export function setPreviewRole(r: Role) {
   try { localStorage.setItem(KEY, r) } catch { /* storage unavailable */ }
   listeners.forEach((l) => l())
@@ -35,7 +35,6 @@ export function useRole(): Role {
 
 export type NavItem = { to: string; label: string; icon: LucideIcon; end?: boolean }
 
-// Bottom navigation, matching the app mock-up.
 export const NAV: Record<Role, NavItem[]> = {
   buyer: [
     { to: '/', label: 'Home', icon: Home, end: true },
@@ -62,7 +61,7 @@ export const NAV: Record<Role, NavItem[]> = {
 
 // Slide-out menu (hamburger) per role.
 export const MENU: Record<Role, [string, string][]> = {
-  buyer: [['Dashboard', '/dashboard'], ['Browse Products', '/marketplace'], ['My Orders', '/orders'], ['Inspection Agents', '/order/agent'], ['Wallet', '/wallet'], ['Messages', '/messages'], ['Disputes', '/disputes'], ['Notifications', '/notifications'], ['Business Verification', '/verification'], ['Settings', '/settings'], ['Help & Support', '/support']],
-  seller: [['Dashboard', '/dashboard'], ['My Products', '/seller/products'], ['Manage Orders', '/seller/orders'], ['Wallet', '/wallet'], ['Messages', '/messages'], ['Disputes', '/disputes'], ['Notifications', '/notifications'], ['Business Verification', '/verification'], ['Settings', '/settings'], ['Help & Support', '/support']],
-  agent: [['Dashboard', '/dashboard'], ['Tasks', '/agent/tasks'], ['Deliveries', '/agent/deliveries'], ['Earnings', '/agent/earnings'], ['Messages', '/messages'], ['Notifications', '/notifications'], ['Agent Verification', '/verification'], ['Settings', '/settings'], ['Help & Support', '/support']],
+  buyer: [['Dashboard', '/dashboard'], ['My Agents', '/agents'], ['My Assignments', '/assignments'], ['Active Transactions', '/orders'], ['Escrow Wallet', '/escrow'], ['Browse Products', '/marketplace'], ['Disputes', '/disputes'], ['Reviews', '/reviews'], ['My Locations', '/locations'], ['Notifications', '/notifications'], ['Business Verification', '/verification'], ['Settings', '/settings'], ['Help & Support', '/support']],
+  seller: [['Dashboard', '/dashboard'], ['Incoming Orders', '/seller/orders'], ['My Products', '/seller/products'], ['Escrow Status', '/escrow'], ['Wallet', '/wallet'], ['Disputes', '/disputes'], ['Buyer Reviews', '/reviews'], ['My Locations', '/locations'], ['Messages', '/messages'], ['Notifications', '/notifications'], ['Business Verification', '/verification'], ['Settings', '/settings'], ['Help & Support', '/support']],
+  agent: [['Dashboard', '/dashboard'], ['My Buyer', '/agent/buyer'], ['Assigned Tasks', '/agent/tasks'], ['Buyer Chat & Fees', '/agent/chat'], ['Deliveries', '/agent/deliveries'], ['Secured Payments', '/escrow'], ['Earnings', '/agent/earnings'], ['Reviews', '/reviews'], ['My Locations', '/locations'], ['Notifications', '/notifications'], ['Agent Verification', '/verification'], ['Settings', '/settings'], ['Help & Support', '/support']],
 }
