@@ -1,84 +1,103 @@
 import { useState } from 'react'
-import { CATEGORIES, UNITS } from '../lib/demo'
-import { MIN_WITHDRAWAL, PLATFORM_FEE_PCT, ngn } from '../lib/fees'
-import { PageHeader, Stat, Tabs, useToast } from '../components/kit'
-import { btnS, btnS2, card, CURRENCIES, input } from '../ui'
+import { SEED_ASSIGNMENTS, SEED_DISPUTES, SEED_REVIEWS, TXS, FLOW, deliveryOf, ledgerFor } from '../lib/fixtures'
+import type { Assignment, Dispute, Review } from '../lib/types'
+import { api } from '../lib/api'
+import { PLATFORM_FEE_PCT, escrowBreakdown, ngn } from '../lib/fees'
+import { useCollection } from '../lib/repo'
+import { ConfirmDialog, PageHeader, Stat, Tabs } from '../components/kit'
+import { Section, Stars, StatusBadge, useRun } from '../components/trust'
+import { Badge, btnS, btnS2, card, input } from '../ui'
 
-const STATS: [string, string][] = [['Registered users', '1,284'], ['Buyers', '640'], ['Sellers', '420'], ['Agents', '224'], ['Transactions', '3,912'], ['Transaction volume', ngn(48200000000)], ['Platform earnings', ngn(1205000000)], ['Pending escrow', ngn(2840000000)], ['Completed orders', '3,611'], ['Pending disputes', '6'], ['Pending withdrawals', '11']]
+const TABS = ['Overview', 'Users', 'Transactions', 'Escrow', 'Inspections', 'Deliveries', 'Disputes', 'Ratings', 'Ledger']
+const USERS = [
+  { id: 'u1', name: 'Buyer John', role: 'Buyer', v: 'verified' }, { id: 'u2', name: 'Lagos Timber Co.', role: 'Seller', v: 'verified' },
+  { id: 'u3', name: 'Chinedu Okafor', role: 'Agent', v: 'verified' }, { id: 'u4', name: 'Amaka Okoro', role: 'Agent', v: 'pending' }, { id: 'u5', name: 'Delta Palm Ltd', role: 'Seller', v: 'pending' },
+]
 
+/** Admin console. Every button here only REQUESTS an action: the server checks the admin role, writes the immutable ledger and applies it. */
 export default function Admin() {
-  const toast = useToast()
+  const run = useRun()
   const [tab, setTab] = useState('Overview')
-  const [pct, setPct] = useState(String(PLATFORM_FEE_PCT))
-  const [minW, setMinW] = useState(String(MIN_WITHDRAWAL))
-  const [cats, setCats] = useState(CATEGORIES)
-  const [units, setUnits] = useState(UNITS)
-  const [newCat, setNewCat] = useState('')
-  const [newUnit, setNewUnit] = useState('')
-  const [ver, setVer] = useState([{ id: 'v1', name: 'Lagos Timber Co.', type: 'Seller' }, { id: 'v2', name: 'Chinedu Agent', type: 'Agent' }, { id: 'v3', name: 'TyreWorks Ltd', type: 'Buyer' }])
-  const [wd, setWd] = useState([{ id: 'w1', who: 'Delta Palm Ltd', amt: 1500000 }, { id: 'w2', who: 'Amaka Okoro', amt: 120000 }])
-  const [dis, setDis] = useState([{ id: 'd1', order: '#SZF8720', reason: 'Quantity is incorrect' }, { id: 'd2', order: '#SZF8712', reason: 'Goods are damaged' }])
+  const [asg] = useCollection<Assignment>('assignments', SEED_ASSIGNMENTS)
+  const [disputes] = useCollection<Dispute>('disputes', SEED_DISPUTES)
+  const [reviews] = useCollection<Review>('reviews', SEED_REVIEWS)
+  const [act, setAct] = useState<null | { title: string; ok: string; call: (note: string) => Promise<any> }>(null)
+  const [note, setNote] = useState('')
+  const ask = (title: string, ok: string, call: (n: string) => Promise<any>) => { setNote(''); setAct({ title, ok, call }) }
 
-  const pctNum = Number(pct)
-  function saveSettings() {
-    if (!(pctNum > 0 && pctNum < 100)) return toast('Commission must be between 0 and 100%.', 'err')
-    if (!(Number(minW) >= 0)) return toast('Enter a valid minimum withdrawal.', 'err')
-    toast(`Saved locally: ${pctNum}% platform fee, min withdrawal ${ngn(Number(minW))} (preview).`, 'warn')
-  }
+  const held = TXS.filter((t) => t.stage >= 2 && t.stage < 10)
+  const sum = (f: (b: ReturnType<typeof escrowBreakdown>) => number, ts = TXS) => ts.reduce((s, t) => s + f(escrowBreakdown(t)), 0)
 
   return (
     <div>
-      <PageHeader title="Admin Dashboard" />
-      <Tabs tabs={['Overview', 'Verification', 'Withdrawals', 'Disputes', 'Settings']} value={tab} onChange={setTab} />
+      <PageHeader title="Admin" />
+      <Tabs tabs={TABS} value={tab} onChange={setTab} />
+      <p className="mb-3 rounded-xl bg-amber-50 p-3 text-xs text-amber-800">Sample data. Actions are sent to the backend, which must verify the admin role and record every financial action in the append-only ledger. Nothing is changed from this screen.</p>
 
-      {tab === 'Overview' && <div className="grid grid-cols-2 gap-3">{STATS.map(([k, v]) => <Stat key={k} label={k} value={v} />)}</div>}
-
-      {tab === 'Verification' && (ver.length === 0 ? <p className="text-sm text-muted">No pending verifications.</p> : (
-        <ul className="space-y-2">{ver.map((v) => (
-          <li key={v.id} className={`${card} flex items-center gap-2`}><div className="flex-1"><p className="text-sm font-bold">{v.name}</p><p className="text-xs text-muted">{v.type}</p></div>
-            <button className={btnS} onClick={() => { setVer(ver.filter((x) => x.id !== v.id)); toast(`${v.name} approved (preview).`) }}>Approve</button>
-            <button className={btnS2} onClick={() => { setVer(ver.filter((x) => x.id !== v.id)); toast(`${v.name} rejected (preview).`, 'warn') }}>Reject</button></li>
-        ))}</ul>
-      ))}
-
-      {tab === 'Withdrawals' && (wd.length === 0 ? <p className="text-sm text-muted">No pending withdrawals.</p> : (
-        <ul className="space-y-2">{wd.map((w) => (
-          <li key={w.id} className={`${card} flex items-center gap-2`}><div className="flex-1"><p className="text-sm font-bold">{w.who}</p><p className="text-xs text-muted">{ngn(w.amt)}</p></div>
-            <button className={btnS} onClick={() => { setWd(wd.filter((x) => x.id !== w.id)); toast('Withdrawal approved (preview, no payout made).') }}>Approve</button>
-            <button className={btnS2} onClick={() => { setWd(wd.filter((x) => x.id !== w.id)); toast('Withdrawal declined (preview).', 'warn') }}>Decline</button></li>
-        ))}</ul>
-      ))}
-
-      {tab === 'Disputes' && (dis.length === 0 ? <p className="text-sm text-muted">No open disputes.</p> : (
-        <ul className="space-y-2">{dis.map((d) => (
-          <li key={d.id} className={`${card} space-y-2`}><div><p className="text-sm font-bold">Order {d.order}</p><p className="text-xs text-muted">{d.reason}</p></div>
-            <div className="flex gap-2"><button className={btnS} onClick={() => { setDis(dis.filter((x) => x.id !== d.id)); toast('Resolved in favour of buyer: refund queued (preview).') }}>Refund buyer</button>
-              <button className={btnS2} onClick={() => { setDis(dis.filter((x) => x.id !== d.id)); toast('Resolved: payment release queued (preview).', 'warn') }}>Release to seller</button></div></li>
-        ))}</ul>
-      ))}
-
-      {tab === 'Settings' && (
-        <div className="space-y-4">
-          <div className={`${card} space-y-2`}>
-            <p className="text-sm font-bold">Commission & withdrawals</p>
-            <label className="block text-xs font-medium">Platform commission (%)<input className={`${input} mt-1`} inputMode="decimal" value={pct} onChange={(e) => setPct(e.target.value)} /></label>
-            <label className="block text-xs font-medium">Minimum withdrawal (₦)<input className={`${input} mt-1`} inputMode="numeric" value={minW} onChange={(e) => setMinW(e.target.value.replace(/\D/g, ''))} /></label>
-            <p className="text-xs text-muted">Agent commission: set per task by the agent and shown before acceptance.</p>
-            <button className={`${btnS} w-full py-2.5`} onClick={saveSettings}>Save settings</button>
-          </div>
-          <div className={`${card} space-y-2`}>
-            <p className="text-sm font-bold">Product categories</p>
-            <div className="flex flex-wrap gap-2">{cats.map((c) => <span key={c} className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold">{c}</span>)}</div>
-            <div className="flex gap-2"><input className={input} placeholder="New category" aria-label="New category" value={newCat} onChange={(e) => setNewCat(e.target.value)} /><button className={btnS} onClick={() => { if (!newCat.trim()) return toast('Enter a category name.', 'err'); setCats([...cats, newCat.trim()]); setNewCat(''); toast('Category added (preview).') }}>Add</button></div>
-          </div>
-          <div className={`${card} space-y-2`}>
-            <p className="text-sm font-bold">Measurement units</p>
-            <div className="flex flex-wrap gap-2">{units.map((u) => <span key={u} className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold">{u}</span>)}</div>
-            <div className="flex gap-2"><input className={input} placeholder="New unit" aria-label="New unit" value={newUnit} onChange={(e) => setNewUnit(e.target.value)} /><button className={btnS} onClick={() => { if (!newUnit.trim()) return toast('Enter a unit.', 'err'); setUnits([...units, newUnit.trim()]); setNewUnit(''); toast('Unit added (preview).') }}>Add</button></div>
-          </div>
-          <div className={card}><p className="mb-1 text-sm font-bold">Supported currencies</p><p className="text-xs text-muted">{CURRENCIES.join(' · ')}</p></div>
+      {tab === 'Overview' && (
+        <div className="grid grid-cols-2 gap-3">
+          <Stat label="Buyers" value="640" /><Stat label="Sellers" value="420" /><Stat label="Agents" value="224" /><Stat label="Transactions" value={String(TXS.length)} />
+          <Stat label="Held in escrow" value={ngn(sum((b) => b.buyerTotal, held))} tone="text-accent" /><Stat label="Platform fees ({PLATFORM_FEE_PCT}%)".replace('{PLATFORM_FEE_PCT}', String(PLATFORM_FEE_PCT))} value={ngn(sum((b) => b.platformFee, TXS.filter((t) => t.stage >= 10)))} />
+          <Stat label="Open disputes" value={String(disputes.length)} tone="text-red-600" /><Stat label="On hold" value={String(TXS.filter((t) => t.hold).length)} />
         </div>
       )}
+
+      {tab === 'Users' && (
+        <ul className="space-y-2">{USERS.map((u) => (
+          <li key={u.id} className={`${card} flex items-center gap-2`}><div className="flex-1"><p className="text-sm font-bold">{u.name}</p><p className="text-xs text-muted">{u.role}</p></div><Badge tone={u.v === 'verified' ? 'green' : 'amber'}>{u.v}</Badge>
+            {u.v !== 'verified' && <><button className={btnS} onClick={() => run(() => api.admin.setVerification(u.id, 'verified'), 'Verified.')}>Verify</button><button className={btnS2} onClick={() => run(() => api.admin.setVerification(u.id, 'rejected'), 'Rejected.')}>Reject</button></>}</li>
+        ))}</ul>
+      )}
+
+      {tab === 'Transactions' && (
+        <ul className="space-y-2">{TXS.map((t) => (
+          <li key={t.id} className={card}><div className="flex items-start justify-between"><div><p className="text-sm font-bold">{t.ref}</p><p className="text-xs text-muted">{t.product} · {t.buyer} → {t.seller}</p></div>{t.hold ? <StatusBadge status="On Hold" /> : <Badge tone="orange">{FLOW[t.stage]}</Badge>}</div>
+            <button className={`${btnS2} mt-2`} onClick={() => ask(`Freeze ${t.ref}?`, 'Freeze requested.', (n) => api.admin.freezeTransaction(t.id, n))}>Freeze transaction</button></li>
+        ))}</ul>
+      )}
+
+      {tab === 'Escrow' && (
+        <ul className="space-y-2">{TXS.filter((t) => t.stage >= 2).map((t) => { const b = escrowBreakdown(t); return (
+          <li key={t.id} className={card}><p className="text-sm font-bold">{t.ref} <span className="text-xs font-normal text-muted">{t.stage >= 10 ? 'released' : t.hold ? 'held (dispute)' : 'held'}</span></p>
+            <dl className="mt-1 space-y-0.5 text-xs"><div className="flex justify-between"><dt>Goods</dt><dd>{ngn(b.goods)}</dd></div><div className="flex justify-between"><dt>Delivery</dt><dd>{ngn(b.delivery)}</dd></div><div className="flex justify-between"><dt>Agent fee</dt><dd>{ngn(b.agentFee)}</dd></div><div className="flex justify-between font-bold"><dt>Total</dt><dd>{ngn(b.buyerTotal)}</dd></div></dl>
+            {t.stage < 10 && <div className="mt-2 flex gap-2"><button className={btnS} onClick={() => ask(`Authorize release for ${t.ref}?`, 'Release requested.', (n) => api.admin.authorizeRelease(t.id, n))}>Authorize release</button><button className={btnS2} onClick={() => ask(`Authorize refund for ${t.ref}?`, 'Refund requested.', (n) => api.admin.authorizeRefund(t.id, n))}>Authorize refund</button></div>}</li>
+        ) })}</ul>
+      )}
+
+      {tab === 'Inspections' && (
+        <ul className="space-y-2">{asg.map((a) => <li key={a.id} className={card}><div className="flex items-start justify-between gap-2"><div><p className="text-sm font-bold">{a.id}</p><p className="text-xs text-muted">{a.kind} · {a.goods}</p>{a.report && <p className="text-xs">{a.report.photos.length} photos · {a.report.videos.length} videos · recommends {a.report.recommendation}</p>}</div><StatusBadge status={a.status} /></div></li>)}</ul>
+      )}
+
+      {tab === 'Deliveries' && (
+        <ul className="space-y-2">{TXS.filter((t) => deliveryOf(t.stage)).map((t) => <li key={t.id} className={`${card} flex items-center justify-between text-sm`}><span><b>{t.ref}</b><span className="block text-xs text-muted">{t.approxFrom} → {t.approxTo}</span></span><Badge tone="orange">{t.hold ? 'Disputed' : deliveryOf(t.stage)}</Badge></li>)}</ul>
+      )}
+
+      {tab === 'Disputes' && (
+        <ul className="space-y-3">{disputes.map((d) => (
+          <li key={d.id} className={`${card} space-y-2`}><div className="flex items-start justify-between gap-2"><div><p className="text-sm font-bold">{d.type}</p><p className="text-xs text-muted">{d.id} · {d.txRef}</p></div><Badge tone="red">{d.status}</Badge></div>
+            <p className="text-sm">{d.text}</p><p className="text-xs text-muted">Evidence: {d.evidence.join(', ')}</p>
+            <div className="flex flex-wrap gap-2">
+              <button className={btnS} onClick={() => ask(`Refund the buyer for ${d.id}?`, 'Resolution requested.', (n) => api.admin.resolveDispute(d.id, 'refund_buyer', n))}>Refund buyer</button>
+              <button className={btnS2} onClick={() => ask(`Release to seller for ${d.id}?`, 'Resolution requested.', (n) => api.admin.resolveDispute(d.id, 'release_to_seller', n))}>Release to seller</button>
+              <button className={btnS2} onClick={() => ask(`Reject ${d.id}?`, 'Resolution requested.', (n) => api.admin.resolveDispute(d.id, 'reject_dispute', n))}>Reject dispute</button>
+            </div>
+            <p className="text-[11px] text-muted">A dispute never refunds automatically. The agent's fee for completed inspection work is decided separately.</p></li>
+        ))}</ul>
+      )}
+
+      {tab === 'Ratings' && (
+        <ul className="space-y-2">{reviews.map((r) => <li key={r.id} className={card}><div className="flex items-center justify-between"><Stars value={r.stars} /><span className="text-xs text-muted">{r.date}</span></div><p className="mt-1 text-sm">{r.text}</p><p className="text-xs text-muted">{r.by} about {r.targetName} · {r.txRef}</p></li>)}</ul>
+      )}
+
+      {tab === 'Ledger' && (
+        <Section title="Transaction ledger (append-only)">
+          <ul className="space-y-1 text-xs">{TXS.flatMap((t) => ledgerFor(t, t.stage)).map((r) => <li key={r.ref} className="flex justify-between gap-2"><span><b>{r.ref}</b> {r.text}</span><span className="font-semibold">{r.amount ? ngn(r.amount) : ''}</span></li>)}</ul>
+          <p className="text-[11px] text-muted">Sample. In production the ledger can only be appended to, never edited or deleted.</p>
+        </Section>
+      )}
+
+      <ConfirmDialog open={!!act} title={act?.title ?? ''} confirmLabel="Submit" body={<div className="space-y-2"><p>Every admin action needs a reason and is logged.</p><textarea className={input} rows={3} placeholder="Reason / notes (required)" aria-label="Reason" value={note} onChange={(e) => setNote(e.target.value)} /></div>} onCancel={() => setAct(null)}
+        onConfirm={async () => { if (note.trim().length < 5) return; const a = act!; setAct(null); await run(() => a.call(note), a.ok) }} />
     </div>
   )
 }
