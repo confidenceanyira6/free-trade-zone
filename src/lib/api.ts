@@ -87,6 +87,7 @@ export const api = {
     resolveDispute: (id: string, outcome: 'refund_buyer' | 'release_to_seller' | 'reject_dispute', note: string) => post(`/admin/disputes/${id}/resolve`, { outcome, note }),
     authorizeRefund: (txId: string, note: string) => post(`/admin/transactions/${txId}/refund`, { note }),
     authorizeRelease: (txId: string, note: string) => post(`/admin/transactions/${txId}/release`, { note }),
+    authorizeAgentFee: (assignmentId: string, note: string) => post(`/admin/assignments/${assignmentId}/release-agent-fee`, { note }),
     setVerification: (userId: string, status: 'verified' | 'rejected') => post(`/admin/users/${userId}/verification`, { status }),
   },
 }

@@ -30,6 +30,7 @@ export const TASK_STATUSES = ['Pending', 'Accepted', 'In Progress', 'Inspection 
 export type TaskStatus = (typeof TASK_STATUSES)[number]
 
 export type Report = {
+  goodsExist: boolean
   quality: string
   quantity: string
   measurements: string
