@@ -1,9 +1,9 @@
 import { ReactNode, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { AlertTriangle, Check, Lock } from 'lucide-react'
-import { localId, nowStr, pushNote, useCollection } from '../lib/repo'
+import { localId, pushNote, useCollection } from '../lib/repo'
 import { DEMO_PRODUCTS } from '../lib/demo'
-import { FLOW, LocalTx, SEED_AGENTS, SEED_ASSIGNMENTS, TXS, Tx, deliveryOf, ledgerFor, seedChat } from '../lib/fixtures'
+import { FLOW, LocalTx, SEED_AGENTS, SEED_ASSIGNMENTS, TXS, Tx, deliveryStates, ledgerFor, seedChat, statusLabel } from '../lib/fixtures'
 import type { AgentRec, Assignment, ChatMsg } from '../lib/types'
 import { DELIVERY_STATUSES } from '../lib/types'
 import { api } from '../lib/api'
@@ -19,9 +19,12 @@ export function TransactionsList() {
   const role = useRole()
   const [reqs] = useCollection<LocalTx>('txRequests', [])
   const all: (Tx & { synced?: boolean })[] = [...reqs, ...TXS.filter((t) => role !== 'agent' || t.agentId === 'a1')]
-  const tabs = ['All', 'Requests', 'Active', 'Completed', 'On Hold']
+  const tabs = ['All', 'Requests', 'Active', 'Completed', 'On Hold', 'Refunded']
   const [tab, setTab] = useState('All')
-  const test: Record<string, (t: Tx) => boolean> = { All: () => true, Requests: (t) => t.stage === 0, Active: (t) => t.stage > 0 && t.stage < 10 && !t.hold, Completed: (t) => t.stage >= 10, 'On Hold': (t) => !!t.hold }
+  const test: Record<string, (t: Tx) => boolean> = {
+    All: () => true, Requests: (t) => t.stage === 0, Active: (t) => t.stage > 0 && t.stage < 10 && !t.hold && !t.refunded,
+    Completed: (t) => t.stage >= 10, 'On Hold': (t) => !!t.hold && !t.refunded, Refunded: (t) => !!t.refunded,
+  }
   const list = all.filter(test[tab])
   const title = role === 'seller' ? 'Incoming Orders' : role === 'agent' ? 'Deliveries' : 'Transactions'
   const amount = (t: Tx) => { const b = escrowBreakdown(t); return role === 'seller' ? ['You receive', b.sellerNet] as const : role === 'agent' ? ['Your fee', b.agentPayout] as const : ['Buyer funds', b.buyerTotal] as const }
@@ -33,6 +36,7 @@ export function TransactionsList() {
         <ul className="space-y-3">
           {list.map((t) => {
             const [label, val] = amount(t)
+            const lbl = statusLabel(t, t.stage)
             return (
               <li key={t.id}>
                 <Link to={`/transactions/${t.id}`} className={`${card} flex items-center gap-3`}>
@@ -41,7 +45,7 @@ export function TransactionsList() {
                     <p className="truncate text-sm font-bold">{t.product}</p>
                     <p className="text-xs text-muted">{t.ref} · {t.qty}</p>
                     <p className="text-xs text-muted">{label}: <b className="text-ink">{ngn(val)}</b></p>
-                    <div className="mt-1 flex flex-wrap gap-1">{t.hold ? <StatusBadge status="On Hold" /> : <Badge tone={t.stage >= 10 ? 'green' : 'orange'}>{FLOW[t.stage]}</Badge>}{(t as any).synced === false && <SyncBadge synced={false} />}</div>
+                    <div className="mt-1 flex flex-wrap gap-1">{lbl === 'On Hold' || lbl === 'Refunded' ? <StatusBadge status={lbl} /> : <Badge tone={t.stage >= 10 ? 'green' : 'orange'}>{lbl}</Badge>}{(t as any).synced === false && <SyncBadge synced={false} />}</div>
                   </div>
                 </Link>
               </li>
@@ -155,17 +159,20 @@ export function TransactionDetail() {
   const [terms, setTerms] = useState({ price: '', delivery: '' })
   const [disp, setDisp] = useState({ details: '', date: '', transport: '', ref: '' })
   const [evid, setEvid] = useState<string[]>([])
-  const [dispEvid, setDispEvid] = useState<string[]>([])
   const [ledger, setLedger] = useState(false)
 
   if (!tx) return <div><PageHeader title="Transaction" /><Empty text="Transaction not found, or you do not have access to it." /></div>
+  const refunded = !!tx.refunded
   const b = escrowBreakdown(tx)
-  const funded = stage >= 2, released = stage >= 10
-  const dstat = deliveryOf(stage)
+  const funded = stage >= 2, released = stage >= 10 && !refunded
+  const dst = deliveryStates(tx, stage)
   const linked = asg.find((a) => a.txRef === tx.ref)
   const steps: Step[] = FLOW.map((t, i) => ({ title: t, state: i < stage ? 'done' : i === stage ? (i === 10 ? 'done' : 'current') : 'todo' }))
-  const tag = released ? 'Released' : funded ? 'Reserved' : 'Not funded'
+  const tag = refunded ? 'Refunded' : released ? 'Released' : funded ? 'Reserved' : 'Not funded'
+  const agentTag = refunded ? 'Released' : tag
+  const lbl = statusLabel(tx, stage)
   const ask = (title: string, body: string, ok: string, call: () => Promise<any>, danger?: boolean) => setDlg({ title, body, call, ok, danger })
+  const counter = { goods: Math.round((tx.goods * 1.04) / 1000) * 1000, delivery: tx.delivery }
 
   // Locations: revealed only once the transaction has started (escrow funded). The server enforces this too.
   const started = stage >= 2
@@ -182,26 +189,54 @@ export function TransactionDetail() {
         <div className="flex items-start gap-3">
           <Art kind={tx.kind} className="h-14 w-14 rounded-lg" />
           <div className="min-w-0 flex-1"><p className="text-sm font-extrabold">{tx.product}</p><p className="text-xs text-muted">{tx.ref} · {tx.qty}</p><p className="text-xs text-muted">Buyer {tx.buyer} · Seller <Link to={`/sellers/${tx.sellerId}`} className="font-semibold text-emerald">{tx.seller}</Link></p><p className="text-xs text-muted">Agent: {tx.agentName ?? 'none'}</p></div>
-          <div className="flex flex-col items-end gap-1">{tx.hold ? <StatusBadge status="On Hold" /> : <Badge tone={released ? 'green' : 'orange'}>{FLOW[stage]}</Badge>}{(tx as any).synced === false && <SyncBadge synced={false} />}</div>
+          <div className="flex flex-col items-end gap-1">{lbl === 'On Hold' || lbl === 'Refunded' ? <StatusBadge status={lbl} /> : <Badge tone={released ? 'green' : 'orange'}>{lbl}</Badge>}{(tx as any).synced === false && <SyncBadge synced={false} />}</div>
         </div>
       </div>
 
-      {tx.hold && <div className="flex gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-800"><AlertTriangle size={16} className="mt-0.5 shrink-0" /><span><b>On hold.</b> A dispute is open, so the escrow funds stay held. They are not refunded or released until an admin resolves it. The agent's fee for completed inspection work is handled separately.</span></div>}
+      {tx.hold && !refunded && <div className="flex gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-800"><AlertTriangle size={16} className="mt-0.5 shrink-0" /><span><b>On hold.</b> A dispute is open, so the escrow funds stay held. They are not refunded or released until an admin resolves it. The agent's fee for completed inspection work is handled separately.</span></div>}
+      {refunded && <div className="flex gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-800"><AlertTriangle size={16} className="mt-0.5 shrink-0" /><span><b>Refunded.</b> After an investigation found the goods were not delivered as agreed, the goods and delivery funds were returned to the buyer's platform account. The agent was still paid for the inspection already completed. The delivery status is Returned.</span></div>}
 
       <Section title="Escrow">
         <BreakdownTable rows={[
-          ['Goods payment', ngn(b.goods), tag], ['Delivery allocation', ngn(b.delivery), tag], ['Agent fee (reserved separately)', ngn(b.agentFee), tag],
+          ['Goods payment', ngn(b.goods), tag], ['Delivery allocation', ngn(b.delivery), tag], ['Agent fee (reserved separately)', ngn(b.agentFee), agentTag],
         ]} total={ngn(b.buyerTotal)} totalLabel="Buyer funds" />
-        <div className="rounded-xl bg-slate-50 p-3 text-xs">
-          <p className="mb-1 font-bold">On release (calculated by the server)</p>
-          <p className="flex justify-between"><span>Seller receives (goods + delivery, less {b.pct}% platform fee)</span><b>{ngn(b.sellerNet)}</b></p>
-          <p className="flex justify-between"><span>Platform fee</span><b>{ngn(b.platformFee)}</b></p>
-          <p className="flex justify-between"><span>Agent receives</span><b>{ngn(b.agentPayout)}</b></p>
-        </div>
-        <p className="text-[11px] text-muted">Held funds are not in anyone's withdrawable balance. The agent's fee is reserved on its own so the seller's payment can never use it.</p>
+        {refunded ? (
+          <div className="rounded-xl bg-slate-50 p-3 text-xs">
+            <p className="mb-1 font-bold">Outcome (calculated by the server)</p>
+            <p className="flex justify-between"><span>Refunded to the buyer's platform account</span><b>{ngn(b.goods + b.delivery)}</b></p>
+            <p className="flex justify-between"><span>Paid to the agent (inspection completed)</span><b>{ngn(b.agentPayout)}</b></p>
+            <p className="flex justify-between"><span>Seller receives</span><b>{ngn(0)}</b></p>
+          </div>
+        ) : (
+          <div className="rounded-xl bg-slate-50 p-3 text-xs">
+            <p className="mb-1 font-bold">On release (calculated by the server)</p>
+            <p className="flex justify-between"><span>Seller receives (goods + delivery, less {b.pct}% platform fee)</span><b>{ngn(b.sellerNet)}</b></p>
+            <p className="flex justify-between"><span>Platform fee</span><b>{ngn(b.platformFee)}</b></p>
+            <p className="flex justify-between"><span>Agent receives</span><b>{ngn(b.agentPayout)}</b></p>
+          </div>
+        )}
+        <p className="text-[11px] text-muted">Held funds are not in anyone's withdrawable balance. The agent's fee is reserved on its own so the seller's payment can never use it. The agent's payment is released independently once the buyer has approved their work.</p>
       </Section>
 
       <div className={card}><p className="mb-3 text-sm font-bold">Progress</p><Timeline steps={steps} /></div>
+
+      {stage === 0 && (
+        <Section title="Terms negotiation">
+          <p className="text-xs text-muted">Both sides must agree the goods price, delivery allocation and inspection requirements before escrow is funded. The seller is responsible for delivery, so the delivery allocation is part of the seller's price.</p>
+          <ul className="space-y-1 text-sm">
+            <li className="flex justify-between gap-2"><span>Buyer's proposal</span><b>{ngn(tx.goods)} + {ngn(tx.delivery)} delivery</b></li>
+            {fx && <li className="flex justify-between gap-2"><span>Seller's counter (sample)</span><b>{ngn(counter.goods)} + {ngn(counter.delivery)} delivery</b></li>}
+          </ul>
+          {role === 'buyer' && fx && (
+            <div className="space-y-2">
+              <button className={`${btn} w-full`} onClick={() => ask('Accept the seller\'s counter-offer?', `You agree to ${ngn(counter.goods)} for the goods plus ${ngn(counter.delivery)} delivery allocation. Escrow is funded as a separate step.`, 'Counter-offer accepted.', () => api.respondTransaction(tx.id, 'accept'))}>Accept counter-offer</button>
+              <div className="grid grid-cols-2 gap-2"><input className={input} inputMode="numeric" placeholder="Your price (₦)" aria-label="Your counter price" value={terms.price} onChange={(e) => setTerms({ ...terms, price: e.target.value.replace(/\D/g, '') })} /><input className={input} inputMode="numeric" placeholder="Delivery (₦)" aria-label="Your counter delivery" value={terms.delivery} onChange={(e) => setTerms({ ...terms, delivery: e.target.value.replace(/\D/g, '') })} /></div>
+              <button className={`${btn2} w-full`} onClick={() => { if (!Number(terms.price)) return toast('Enter your counter price.', 'err'); run(() => api.respondTransaction(tx.id, 'negotiate', { price: Number(terms.price), delivery: Number(terms.delivery) || 0 }), 'Counter sent.') }}>Counter again</button>
+            </div>
+          )}
+          {role === 'buyer' && !fx && <p className="rounded-lg bg-slate-50 p-2 text-xs text-muted">Waiting for the seller to accept, reject or negotiate.</p>}
+        </Section>
+      )}
 
       <Section title="Locations (private)">
         {locs.map(([label, value, approx, vis]) => <LockedLocation key={label} label={label} value={value || 'Not provided'} approx={approx} visible={vis} />)}
@@ -225,10 +260,10 @@ export function TransactionDetail() {
         </Section>
       )}
 
-      {dstat && (
+      {dst.length > 0 && (
         <Section title="Delivery">
-          <div className="flex flex-wrap gap-1">{DELIVERY_STATUSES.map((s) => <Badge key={s} tone={s === dstat ? 'green' : 'slate'}>{s}</Badge>)}</div>
-          {role === 'seller' && stage === 5 && (
+          <div className="flex flex-wrap gap-1">{DELIVERY_STATUSES.map((s) => <Badge key={s} tone={dst.includes(s) ? (s === 'Disputed' || s === 'Returned' ? 'red' : 'green') : 'slate'}>{s}</Badge>)}</div>
+          {role === 'seller' && stage === 5 && !tx.hold && (
             <div className="space-y-2">
               <p className="text-xs font-bold">Dispatch details (you are responsible for delivery)</p>
               <input className={input} placeholder="Delivery details (vehicle, driver, route)" aria-label="Delivery details" value={disp.details} onChange={(e) => setDisp({ ...disp, details: e.target.value })} />
@@ -237,14 +272,14 @@ export function TransactionDetail() {
               <button className={`${btn} w-full`} onClick={() => { if (disp.details.trim().length < 5 || !disp.date || evid.length === 0) return toast('Add delivery details, an expected date and dispatch evidence.', 'err'); run(() => api.dispatch(tx.id, { ...disp, evidence: evid }), 'Dispatch recorded.') }}>Mark as dispatched</button>
             </div>
           )}
-          {role === 'seller' && (stage === 6 || stage === 7) && <button className={`${btn2} w-full`} onClick={() => run(() => api.updateDelivery(tx.id, stage === 6 ? 'In Transit' : 'Arrived at Destination'), 'Delivery updated.')}>{stage === 6 ? 'Mark in transit' : 'Mark arrived at destination'}</button>}
+          {role === 'seller' && (stage === 6 || stage === 7) && !tx.hold && <button className={`${btn2} w-full`} onClick={() => run(() => api.updateDelivery(tx.id, stage === 6 ? 'In Transit' : 'Arrived at Destination'), 'Delivery updated.')}>{stage === 6 ? 'Mark in transit' : 'Mark arrived at destination'}</button>}
           {role === 'agent' && stage >= 6 && stage <= 8 && (
             <div className="space-y-2"><FilePick label="Delivery evidence (supervising agent)" names={evid} onChange={setEvid} /><button className={`${btnS2} w-full py-2.5`} onClick={() => { if (!evid.length) return toast('Choose evidence to upload.', 'err'); run(() => api.updateDelivery(tx.id, 'evidence', evid), 'Evidence submitted.') }}>Upload evidence</button></div>
           )}
         </Section>
       )}
 
-      {stage >= 8 && (
+      {stage >= 8 && !refunded && (
         <Section title="Confirmations">
           <ul className="space-y-2"><Row k="Buyer confirms receipt and satisfaction" ok={stage >= 9} v={<Badge tone={stage >= 9 ? 'green' : 'amber'}>{stage >= 9 ? 'Confirmed' : 'Awaiting'}</Badge>} /><Row k="Seller confirms successful delivery" ok={stage >= 9} v={<Badge tone={stage >= 9 ? 'green' : 'amber'}>{stage >= 9 ? 'Confirmed' : 'Awaiting'}</Badge>} /><Row k="Agent delivery confirmation (optional)" ok={stage >= 9} v={<Badge tone={stage >= 9 ? 'green' : 'slate'}>{stage >= 9 ? 'Submitted' : 'Optional'}</Badge>} /></ul>
           {stage === 8 && !tx.hold && role === 'buyer' && <button className={`${btn} w-full`} onClick={() => ask('Confirm receipt?', 'Confirm that the goods arrived and you are satisfied. Funds are only released after the seller also confirms and the server completes its checks.', 'Confirmation recorded.', () => api.confirm(tx.id, 'buyer'))}>Confirm receipt</button>}
@@ -253,15 +288,17 @@ export function TransactionDetail() {
         </Section>
       )}
 
-      <Section title="When is money released?">
-        <ul className="space-y-2"><Row k="Inspection approved by the buyer" ok={stage >= 5} /><Row k="Goods arrived at the destination" ok={stage >= 8} /><Row k="Buyer and seller both confirmed" ok={stage >= 9} /><Row k="No dispute or hold" ok={!tx.hold} /></ul>
-        <p className="text-[11px] text-muted">The server releases funds in a single atomic, idempotent operation, so nobody can be paid twice. The app can only request it.</p>
-      </Section>
+      {!refunded && (
+        <Section title="When is money released?">
+          <ul className="space-y-2"><Row k="Inspection approved by the buyer" ok={stage >= 5} /><Row k="Goods arrived at the destination" ok={stage >= 8} /><Row k="Buyer and seller both confirmed" ok={stage >= 9} /><Row k="No dispute or hold" ok={!tx.hold} /></ul>
+          <p className="text-[11px] text-muted">The server releases funds in a single atomic, idempotent operation, so nobody can be paid twice. The app can only request it.</p>
+        </Section>
+      )}
 
       <div className="space-y-2">
-        {role === 'buyer' && stage === 0 && <button className={`${btn2} w-full`} onClick={() => ask('Cancel this request?', 'The seller has not accepted yet, so nothing has been charged.', 'Request cancelled.', () => api.cancelTransaction(tx.id), true)}>Cancel request</button>}
-        {role === 'buyer' && stage === 1 && <button className={`${btn} w-full`} onClick={() => ask('Fund escrow?', `You will pay ${ngn(b.buyerTotal)} into escrow inside Saage. It is held (goods ${ngn(b.goods)}, delivery ${ngn(b.delivery)}, agent ${ngn(b.agentFee)}) and is not available to the seller yet.`, 'Escrow funded.', () => api.fundEscrow(tx.id))}>Fund escrow ({ngn(b.buyerTotal)})</button>}
-        {role === 'buyer' && stage >= 2 && stage < 6 && <button className={`${btn2} w-full`} onClick={() => ask('Cancel this transaction?', 'Cancellation and refunds follow the transaction rules and are processed by the server.', 'Cancellation requested.', () => api.cancelTransaction(tx.id), true)}>Cancel (per refund rules)</button>}
+        {!refunded && role === 'buyer' && stage === 0 && <button className={`${btn2} w-full`} onClick={() => ask('Cancel this request?', 'The seller has not accepted yet, so nothing has been charged.', 'Request cancelled.', () => api.cancelTransaction(tx.id), true)}>Cancel request</button>}
+        {!refunded && role === 'buyer' && stage === 1 && <button className={`${btn} w-full`} onClick={() => ask('Fund escrow?', `You will pay ${ngn(b.buyerTotal)} into escrow inside Saage. It is held (goods ${ngn(b.goods)}, delivery ${ngn(b.delivery)}, agent ${ngn(b.agentFee)}) and is not available to the seller yet.`, 'Escrow funded.', () => api.fundEscrow(tx.id))}>Fund escrow ({ngn(b.buyerTotal)})</button>}
+        {!refunded && role === 'buyer' && stage >= 2 && stage < 6 && <button className={`${btn2} w-full`} onClick={() => ask('Cancel this transaction?', 'Cancellation and refunds follow the transaction rules and are processed by the server.', 'Cancellation requested.', () => api.cancelTransaction(tx.id), true)}>Cancel (per refund rules)</button>}
         {role === 'seller' && stage === 0 && (
           <Section title="Respond to this request">
             <div className="grid grid-cols-2 gap-2"><button className={btn} onClick={() => ask('Accept these terms?', 'You agree to the goods price, delivery allocation and inspection requirements. You are responsible for delivery costs.', 'Terms accepted.', () => api.respondTransaction(tx.id, 'accept'))}>Accept</button><button className={btn2} onClick={() => ask('Reject this request?', 'The buyer will be told you declined.', 'Request rejected.', () => api.respondTransaction(tx.id, 'reject'), true)}>Reject</button></div>
@@ -269,7 +306,7 @@ export function TransactionDetail() {
             <button className={`${btn2} w-full`} onClick={() => { if (!Number(terms.price)) return toast('Enter a counter price.', 'err'); run(() => api.respondTransaction(tx.id, 'negotiate', { price: Number(terms.price), delivery: Number(terms.delivery) || 0 }), 'Counter-offer sent.') }}>Negotiate terms</button>
           </Section>
         )}
-        {stage >= 2 && stage < 10 && role !== 'agent' && <Link to={`/disputes?tx=${tx.ref}`} className={`${btn2} w-full text-red-600`}>Report a problem / open a dispute</Link>}
+        {stage >= 2 && stage < 10 && !refunded && role !== 'agent' && <Link to={`/disputes?tx=${tx.ref}`} className={`${btn2} w-full text-red-600`}>Report a problem / open a dispute</Link>}
         {role === 'buyer' && stage === 10 && <Link to="/reviews" className={`${btn} w-full`}>Rate this transaction</Link>}
         {role === 'seller' && stage === 10 && <Link to="/reviews" className={`${btn} w-full`}>Rate the buyer</Link>}
       </div>
@@ -296,7 +333,8 @@ export function TransactionDetail() {
 export function EscrowPage() {
   const role = useRole()
   const list = TXS.filter((t) => t.stage >= 2 && (role !== 'agent' || t.agentId === 'a1'))
-  const held = list.filter((t) => t.stage < 10)
+  const held = list.filter((t) => t.stage < 10 && !t.refunded)
+  const done = list.filter((t) => t.stage >= 10 || t.refunded)
   const sum = (f: (b: ReturnType<typeof escrowBreakdown>) => number, ts: Tx[]) => ts.reduce((s, t) => s + f(escrowBreakdown(t)), 0)
   const heading = role === 'seller' ? 'Escrow Status' : role === 'agent' ? 'Secured Payments' : 'Escrow Wallet'
   const pick = (b: ReturnType<typeof escrowBreakdown>) => (role === 'seller' ? b.sellerNet : role === 'agent' ? b.agentPayout : b.buyerTotal)
@@ -305,7 +343,7 @@ export function EscrowPage() {
       <PageHeader title={heading} back={false} />
       <div className="grid grid-cols-2 gap-3">
         <div className={card}><p className="text-xs text-muted">{role === 'buyer' ? 'Held in escrow' : 'Secured, not yet released'}</p><p className="text-lg font-extrabold text-accent">{ngn(sum(pick, held))}</p></div>
-        <div className={card}><p className="text-xs text-muted">{role === 'buyer' ? 'Released' : 'Paid out'}</p><p className="text-lg font-extrabold text-emerald">{ngn(sum(pick, list.filter((t) => t.stage >= 10)))}</p></div>
+        <div className={card}><p className="text-xs text-muted">{role === 'buyer' ? 'Released or refunded' : 'Paid out'}</p><p className="text-lg font-extrabold text-emerald">{ngn(sum(pick, role === 'seller' ? done.filter((t) => !t.refunded) : done))}</p></div>
       </div>
       <p className="rounded-xl bg-emerald/10 p-3 text-xs text-forest">Escrow money is never in a withdrawable balance. Amounts below are sample data. In production they are calculated and controlled only by the server.</p>
       <SectionTitle title="By transaction" />
@@ -313,15 +351,16 @@ export function EscrowPage() {
         <ul className="space-y-3">
           {list.map((t) => {
             const b = escrowBreakdown(t)
+            const state = t.refunded ? 'Refunded' : t.hold ? 'On Hold' : t.stage >= 10 ? 'Released' : 'Held'
             return (
               <li key={t.id}><Link to={`/transactions/${t.id}`} className={`${card} block`}>
-                <div className="flex items-center justify-between"><p className="text-sm font-bold">{t.ref}</p>{t.hold ? <StatusBadge status="On Hold" /> : <Badge tone={t.stage >= 10 ? 'green' : 'orange'}>{t.stage >= 10 ? 'Released' : 'Held'}</Badge>}</div>
+                <div className="flex items-center justify-between"><p className="text-sm font-bold">{t.ref}</p>{state === 'On Hold' || state === 'Refunded' ? <StatusBadge status={state} /> : <Badge tone={state === 'Released' ? 'green' : 'orange'}>{state}</Badge>}</div>
                 <p className="text-xs text-muted">{t.product}</p>
                 <dl className="mt-2 space-y-0.5 text-xs">
                   {role !== 'agent' && <div className="flex justify-between"><dt className="text-muted">Goods</dt><dd>{ngn(b.goods)}</dd></div>}
                   {role !== 'agent' && <div className="flex justify-between"><dt className="text-muted">Delivery allocation</dt><dd>{ngn(b.delivery)}</dd></div>}
-                  {role !== 'seller' && <div className="flex justify-between"><dt className="text-muted">Agent fee (secured)</dt><dd>{ngn(b.agentFee)}</dd></div>}
-                  {role === 'seller' && <div className="flex justify-between"><dt className="text-muted">After {b.pct}% platform fee</dt><dd>{ngn(b.sellerNet)}</dd></div>}
+                  {role !== 'seller' && <div className="flex justify-between"><dt className="text-muted">Agent fee ({t.refunded || t.stage >= 10 ? 'paid' : 'secured'})</dt><dd>{ngn(b.agentFee)}</dd></div>}
+                  {role === 'seller' && <div className="flex justify-between"><dt className="text-muted">After {b.pct}% platform fee</dt><dd>{ngn(t.refunded ? 0 : b.sellerNet)}</dd></div>}
                 </dl>
               </Link></li>
             )
