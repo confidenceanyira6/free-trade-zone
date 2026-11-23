@@ -55,7 +55,7 @@ export function LocationsPage() {
 }
 
 /* ======================= Disputes ======================= */
-const D_TYPES = ['Damaged goods', 'Missing quantity', 'Substituted goods', 'Failed delivery', 'Goods different from the listing', 'Seller refuses to cooperate']
+const D_TYPES = ['Damaged goods', 'Missing quantity', 'Stolen in transit', 'Substituted goods', 'Failed delivery', 'Goods different from the listing', 'Seller refuses to cooperate']
 
 export function DisputesPage() {
   const [sp] = useSearchParams()
@@ -109,7 +109,7 @@ export function ReviewsPage() {
   const [reviews, setReviews] = useCollection<Review>('reviews', SEED_REVIEWS)
   const [tab, setTab] = useState('To review')
   const [form, setForm] = useState<{ key: string; stars: number; text: string } | null>(null)
-  const done = TXS.filter((t) => t.stage >= 10)
+  const done = TXS.filter((t) => t.stage >= 10 && !t.refunded)
   const targets = done.flatMap((t) => role === 'buyer'
     ? [{ t, target: 'seller' as const, id: t.sellerId, name: t.seller }, ...(t.agentId ? [{ t, target: 'agent' as const, id: t.agentId, name: t.agentName ?? 'Agent' }] : [])]
     : role === 'seller' ? [{ t, target: 'buyer' as const, id: 'b1', name: t.buyer }] : [])
@@ -168,7 +168,7 @@ export function SellerProfile() {
   const rv = reviews.filter((r) => r.target === 'seller' && r.targetId === id)
   if (!t) return <div><PageHeader title="Seller" /><Empty text="Seller not found." /></div>
   const avg = rv.length ? rv.reduce((s, r) => s + r.stars, 0) / rv.length : 0
-  const completed = TXS.filter((x) => x.sellerId === id && x.stage >= 10).length
+  const completed = TXS.filter((x) => x.sellerId === id && x.stage >= 10 && !x.refunded).length
   return (
     <div className="space-y-4">
       <PageHeader title="Seller Profile" />
@@ -199,7 +199,7 @@ export function NotificationsPage() {
           </li>
         ))}</ul>
       )}
-      <p className="mt-4 text-center text-[11px] text-muted">Covers agent invitations, fee proposals, assignments, transaction requests, escrow, inspections, delivery, confirmations, payments, refunds, disputes and ratings.</p>
+      <p className="mt-4 text-center text-[11px] text-muted">Covers agent invitations, fee proposals, assignments, transaction requests, escrow, inspections, delivery, confirmations, payments, refunds, disputes and ratings. Entries here are samples; the server creates the real ones.</p>
     </div>
   )
 }

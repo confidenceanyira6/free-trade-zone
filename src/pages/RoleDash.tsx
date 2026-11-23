@@ -37,8 +37,8 @@ function WalletCard({ label, amount, accent }: { label: string; amount: number; 
 export default function RoleDash({ role }: { role: Role }) {
   const [agents] = useCollection<AgentRec>('agents', SEED_AGENTS)
   const [asg] = useCollection<Assignment>('assignments', SEED_ASSIGNMENTS)
-  const active = TXS.filter((t) => t.stage < 10 && !t.hold)
-  const held = TXS.filter((t) => t.stage >= 2 && t.stage < 10)
+  const active = TXS.filter((t) => t.stage < 10 && !t.hold && !t.refunded)
+  const held = TXS.filter((t) => t.stage >= 2 && t.stage < 10 && !t.refunded)
   const heldTotal = held.reduce((s, t) => s + escrowBreakdown(t).buyerTotal, 0)
   const negotiating = agents.filter((a) => a.status === 'accepted').filter((a) => readCollection<any>(`chat:${a.id}`, seedChat(a.id)).some((m) => m.kind === 'fee' && m.fee?.state === 'proposed')).length
   const mine = asg.filter((a) => a.agentId === 'a1')
