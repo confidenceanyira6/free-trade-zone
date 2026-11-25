@@ -1,21 +1,22 @@
--- Saage Free Trade Zone, phase 1: security foundation.
--- NOT RUN. Review, then apply to a STAGING Supabase project first (supabase db push).
--- Additive and idempotent: it does not drop tables or delete data.
+-- Saage Free Trade Zone, migration 0002: security foundation.
+-- NOT RUN (the database connection from my tools failed, see docs/BACKEND_STATUS.md).
+-- Run supabase/preflight.sql first to see what already exists in the live project.
+-- Additive and idempotent: no drops of tables, no data deletion.
 --
--- Fixes problems found in 0001_agents_escrow.sql:
---   1. profiles had no RLS, so any signed-in user could change their own role to 'admin'.
---   2. is_admin() trusted profiles.role. Admins now live in a separate, permissioned table.
---   3. No currency anywhere (every amount was an unlabelled NUMERIC).
---   4. Helper money functions (post_ledger, credit_wallet) were executable by clients.
---   5. fee_proposals had no write path, so negotiation could not work, and accepted fees were not immutable.
+-- Fixes in the 0001 draft:
+--   1. profiles had no RLS: any signed-in user could set their own role to admin.
+--   2. is_admin() trusted profiles.role. Admins now live in admin_users with permission levels.
+--   3. No currency on money columns.
+--   4. post_ledger / credit_wallet were executable by clients.
+--   5. fee_proposals had no write path and accepted fees were not immutable.
 --   6. No verification model and no verification gate for transactions.
+-- Matches the frontend: signup metadata (saage_role, business_name, country...), companies table,
+-- admin_users.admin_role.
+
+create extension if not exists pgcrypto;
 
 -- ============================================================ countries / currencies
-create table if not exists countries (
-  code char(2) primary key,
-  name text not null,
-  active boolean not null default true
-);
+create table if not exists countries (code char(2) primary key, name text not null, active boolean not null default true);
 create table if not exists supported_currencies (
   code text primary key check (code ~ '^[A-Z]{3}$'),
   name text not null,
@@ -37,12 +38,16 @@ insert into supported_currencies(code, name) values
   ('NGN','Nigerian Naira'),('USD','US Dollar'),('GBP','Pound Sterling'),('EUR','Euro'),('GHS','Ghanaian Cedi')
   on conflict do nothing;
 insert into countries(code, name) values
-  ('NG','Nigeria'),('GH','Ghana'),('US','United States'),('GB','United Kingdom'),('DE','Germany'),('CN','China'),('IN','India'),('AE','United Arab Emirates')
+  ('NG','Nigeria'),('GH','Ghana'),('KE','Kenya'),('ZA','South Africa'),('CI','Cote d''Ivoire'),('CM','Cameroon'),('TZ','Tanzania'),
+  ('EG','Egypt'),('CN','China'),('IN','India'),('AE','United Arab Emirates'),('GB','United Kingdom'),('US','United States'),
+  ('DE','Germany'),('NL','Netherlands')
   on conflict do nothing;
 
-alter table countries enable row level security;
-alter table supported_currencies enable row level security;
-alter table exchange_rates enable row level security;
+do $$ declare t text; begin
+  foreach t in array array['countries','supported_currencies','exchange_rates'] loop
+    execute format('alter table %I enable row level security', t);
+  end loop;
+end $$;
 drop policy if exists countries_read on countries;
 create policy countries_read on countries for select using (true);
 drop policy if exists currencies_read on supported_currencies;
@@ -51,14 +56,14 @@ drop policy if exists rates_read on exchange_rates;
 create policy rates_read on exchange_rates for select to authenticated using (true);
 
 -- One settlement currency per transaction. No silent conversion.
-alter table transactions     add column if not exists currency text not null default 'NGN' references supported_currencies(code);
-alter table escrow_accounts  add column if not exists currency text not null default 'NGN' references supported_currencies(code);
-alter table assignments      add column if not exists currency text not null default 'NGN' references supported_currencies(code);
-alter table fee_proposals    add column if not exists currency text not null default 'NGN' references supported_currencies(code);
+alter table transactions    add column if not exists currency text not null default 'NGN' references supported_currencies(code);
+alter table escrow_accounts add column if not exists currency text not null default 'NGN' references supported_currencies(code);
+alter table assignments     add column if not exists currency text not null default 'NGN' references supported_currencies(code);
+alter table fee_proposals   add column if not exists currency text not null default 'NGN' references supported_currencies(code);
 
 -- ============================================================ profiles: lock down
 alter table profiles add column if not exists email text;
-alter table profiles add column if not exists country char(2) references countries(code);
+alter table profiles add column if not exists country char(2);
 alter table profiles add column if not exists state text;
 alter table profiles add column if not exists city text;
 alter table profiles add column if not exists avatar_path text;
@@ -76,18 +81,15 @@ drop policy if exists profiles_update_own on profiles;
 create policy profiles_update_own on profiles for update using (id = auth.uid()) with check (id = auth.uid());
 revoke insert, delete on profiles from anon, authenticated;
 
--- Clients may edit harmless fields only. Role, verification and status are server-controlled.
--- Not SECURITY DEFINER on purpose: current_user is then the real caller, so only direct client
--- writes (role 'authenticated'/'anon') are blocked, while our own definer functions still work.
+-- Clients may edit harmless fields only. Not SECURITY DEFINER on purpose: current_user is the real
+-- caller, so direct client writes are blocked while our own definer functions still work.
 create or replace function profiles_guard() returns trigger language plpgsql as $$
 begin
   if current_user in ('authenticated','anon') then
-    if new.role is distinct from old.role
-       or new.verified is distinct from old.verified
+    if new.role is distinct from old.role or new.verified is distinct from old.verified
        or new.verification_status is distinct from old.verification_status
        or new.verification_tier is distinct from old.verification_tier
-       or new.account_status is distinct from old.account_status
-       or new.id is distinct from old.id then
+       or new.account_status is distinct from old.account_status or new.id is distinct from old.id then
       raise exception 'protected profile field';
     end if;
   end if;
@@ -96,20 +98,51 @@ end $$;
 drop trigger if exists profiles_guard_trg on profiles;
 create trigger profiles_guard_trg before update on profiles for each row execute function profiles_guard();
 
--- Profile row is created by Supabase Auth signup. Admin can never be self-selected.
+-- companies: the frontend reads companies by owner_id.
+create table if not exists companies (
+  id uuid primary key default gen_random_uuid(),
+  owner_id uuid not null references auth.users(id) on delete cascade,
+  name text not null,
+  country char(2),
+  address text,
+  verification_status text not null default 'unverified',
+  created_at timestamptz not null default now()
+);
+alter table companies add column if not exists address text;
+alter table companies enable row level security;
+drop policy if exists companies_owner_read on companies;
+create policy companies_owner_read on companies for select using (owner_id = auth.uid() or is_admin());
+drop policy if exists companies_owner_update on companies;
+create policy companies_owner_update on companies for update using (owner_id = auth.uid()) with check (owner_id = auth.uid());
+create or replace function companies_guard() returns trigger language plpgsql as $$
+begin
+  if current_user in ('authenticated','anon') and (new.verification_status is distinct from old.verification_status or new.owner_id is distinct from old.owner_id) then
+    raise exception 'protected company field';
+  end if;
+  return new;
+end $$;
+drop trigger if exists companies_guard_trg on companies;
+create trigger companies_guard_trg before update on companies for each row execute function companies_guard();
+
+-- Profile row created at signup from the frontend's metadata. 'admin' can never be self-selected.
 create or replace function handle_new_user() returns trigger language plpgsql security definer set search_path = public as $$
-declare r text := coalesce(new.raw_user_meta_data->>'role', 'buyer');
+declare m jsonb := coalesce(new.raw_user_meta_data, '{}'::jsonb); r text := coalesce(m->>'saage_role', m->>'role', 'buyer');
 begin
   if r not in ('buyer','seller','agent') then r := 'buyer'; end if;
-  insert into profiles(id, role, full_name, phone, email)
-  values (new.id, r::user_role, new.raw_user_meta_data->>'full_name', new.phone, new.email)
+  insert into profiles(id, role, full_name, phone, email, country)
+  values (new.id, r::user_role, m->>'full_name', coalesce(new.phone, m->>'phone'), new.email, nullif(left(m->>'country', 2), ''))
   on conflict (id) do nothing;
+  begin
+    if nullif(trim(m->>'business_name'), '') is not null then
+      insert into companies(owner_id, name, country, address) values (new.id, trim(m->>'business_name'), nullif(left(m->>'country', 2), ''), m->>'address');
+    end if;
+  exception when others then null;   -- never block signup because of the company row
+  end;
   return new;
 end $$;
 drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created after insert on auth.users for each row execute function handle_new_user();
 
--- Safe public view for marketplace and chat headers (no phone, email or identity data).
 create or replace view public_profiles as
   select id, full_name, role, verification_status, verification_tier, country, state, city, avatar_path
   from profiles where account_status = 'active';
@@ -122,12 +155,15 @@ create table if not exists admin_permissions (
   permission text not null,
   primary key (role_id, permission)
 );
+-- The frontend reads admin_users.admin_role. Create or reconcile an existing table.
 create table if not exists admin_users (
-  user_id uuid primary key references profiles(id),
-  role_id text not null references admin_roles(id),
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  admin_role text not null default 'super_admin',
   active boolean not null default true,
   created_at timestamptz not null default now()
 );
+alter table admin_users add column if not exists admin_role text not null default 'super_admin';
+alter table admin_users add column if not exists active boolean not null default true;
 
 insert into admin_roles(id, name) values
   ('super_admin','Super Administrator'),('verification_officer','Verification Officer'),
@@ -141,8 +177,7 @@ insert into admin_permissions(role_id, permission) values
   ('marketplace_moderator','marketplace.moderate')
   on conflict do nothing;
 
--- Existing admins keep access as super administrators.
-insert into admin_users(user_id, role_id) select id, 'super_admin' from profiles where role = 'admin' on conflict do nothing;
+insert into admin_users(user_id, admin_role) select id, 'super_admin' from profiles where role = 'admin' on conflict do nothing;
 
 create or replace function is_admin() returns boolean language sql stable security definer set search_path = public as $$
   select exists (select 1 from admin_users where user_id = auth.uid() and active)
@@ -151,7 +186,7 @@ create or replace function has_permission(p text) returns boolean language sql s
   select exists (
     select 1 from admin_users u
     where u.user_id = auth.uid() and u.active
-      and (u.role_id = 'super_admin' or exists (select 1 from admin_permissions ap where ap.role_id = u.role_id and ap.permission = p))
+      and (u.admin_role = 'super_admin' or exists (select 1 from admin_permissions ap where ap.role_id = u.admin_role and ap.permission = p))
   )
 $$;
 
@@ -164,11 +199,11 @@ drop policy if exists admin_perms_read on admin_permissions;
 create policy admin_perms_read on admin_permissions for select using (is_admin());
 drop policy if exists admin_users_read on admin_users;
 create policy admin_users_read on admin_users for select using (user_id = auth.uid() or has_permission('users.manage'));
--- No client write policies: admins are created by a super administrator through an Edge Function.
+-- No client write policies: admins are created by a super administrator through the SQL editor or an Edge Function.
 
 create table if not exists admin_audit_logs (
   id bigserial primary key,
-  admin_id uuid references profiles(id),
+  admin_id uuid references auth.users(id),
   action text not null,
   target_type text,
   target_id text,
@@ -191,22 +226,16 @@ $$;
 revoke all on function write_audit(text, text, text, jsonb) from public, anon, authenticated;
 
 -- ============================================================ verification
--- Raw NIN and BVN are never stored. The Edge Function sends them to the provider and keeps only a
--- keyed hash (to stop one identity being used on two accounts), the last 4 digits, and the provider reference.
+-- Raw NIN and BVN are never stored: only a keyed hash (blocks one identity on two accounts), the last 4 digits and the provider reference.
 create table if not exists verification_records (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references profiles(id),
   subject text not null check (subject in ('identity','business','agent')),
   status text not null default 'pending'
     check (status in ('not_submitted','pending','under_review','verified','rejected','expired','requires_resubmission')),
-  provider text,
-  provider_reference text,
-  nin_last4 text, bvn_last4 text,
-  nin_hash text, bvn_hash text,
-  reviewer_id uuid references profiles(id),
-  reviewed_at timestamptz,
-  expires_at timestamptz,
-  notes text,
+  provider text, provider_reference text,
+  nin_last4 text, bvn_last4 text, nin_hash text, bvn_hash text,
+  reviewer_id uuid references profiles(id), reviewed_at timestamptz, expires_at timestamptz, notes text,
   created_at timestamptz not null default now()
 );
 create unique index if not exists verification_nin_unique on verification_records (nin_hash) where nin_hash is not null and status in ('pending','under_review','verified');
@@ -218,18 +247,15 @@ create table if not exists business_verifications (
   record_id uuid not null references verification_records(id),
   user_id uuid not null references profiles(id),
   business_name text not null,
-  registration_country char(2) not null default 'NG' references countries(code),
-  registration_number text,                       -- CAC number for Nigeria
-  business_address text,
-  representative_name text,
+  registration_country char(2) not null default 'NG',
+  registration_number text, business_address text, representative_name text,
   created_at timestamptz not null default now()
 );
 create table if not exists identity_checks (
   id uuid primary key default gen_random_uuid(),
   record_id uuid not null references verification_records(id),
-  provider text not null,
-  provider_reference text,
-  result_summary jsonb not null default '{}'::jsonb,   -- match / no-match only, no identity payload
+  provider text not null, provider_reference text,
+  result_summary jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now()
 );
 create table if not exists verification_documents (
@@ -248,12 +274,11 @@ create table if not exists verification_events (
   from_status text, to_status text not null, note text,
   created_at timestamptz not null default now()
 );
--- PLACEHOLDER VALUES: the business must set real limits. NULL means unlimited.
+-- PLACEHOLDER VALUES: set real limits. NULL means unlimited.
 create table if not exists verification_limits (
   tier text not null check (tier in ('unverified','partial','full')),
   currency text not null references supported_currencies(code),
-  max_transaction_amount numeric(18,2),
-  max_monthly_volume numeric(18,2),
+  max_transaction_amount numeric(18,2), max_monthly_volume numeric(18,2),
   primary key (tier, currency)
 );
 insert into verification_limits(tier, currency, max_transaction_amount, max_monthly_volume) values
@@ -265,7 +290,6 @@ do $$ declare t text; begin
     execute format('alter table %I enable row level security', t);
   end loop;
 end $$;
-
 drop policy if exists vr_owner on verification_records;
 create policy vr_owner on verification_records for select using (user_id = auth.uid() or has_permission('verification.review'));
 drop policy if exists bv_owner on business_verifications;
@@ -291,7 +315,6 @@ begin
   if not found then raise exception 'record not found'; end if;
   update verification_records set status = p_status, reviewer_id = auth.uid(), reviewed_at = now(), notes = p_note where id = p_record;
   insert into verification_events(record_id, actor_id, from_status, to_status, note) values (p_record, auth.uid(), r.status, p_status, p_note);
-
   if p_status = 'verified' then
     if r.subject in ('identity','agent') then
       update profiles set verification_status = 'verified',
@@ -300,19 +323,35 @@ begin
       where id = r.user_id;
     else
       update profiles set verification_tier = case when verification_status = 'verified' then 'full' else verification_tier end where id = r.user_id;
+      update companies set verification_status = 'verified' where owner_id = r.user_id;
     end if;
   elsif p_status in ('rejected','expired','requires_resubmission') then
     if r.subject in ('identity','agent') then
       update profiles set verification_status = p_status, verification_tier = 'unverified' where id = r.user_id;
     else
       update profiles set verification_tier = case when verification_tier = 'full' then 'partial' else verification_tier end where id = r.user_id;
+      update companies set verification_status = p_status where owner_id = r.user_id;
     end if;
   end if;
   perform write_audit('verification.outcome', 'verification_record', p_record::text, jsonb_build_object('status', p_status, 'note', p_note));
 end $$;
 grant execute on function set_verification_outcome(uuid, text, text) to authenticated;   -- checks has_permission itself
 
--- Called by the create-transaction Edge Function (service role) before a transaction exists.
+-- Used by the frontend admin console (api.admin.setVerification(userId, status)).
+create or replace function admin_set_verification(p_user uuid, p_status text) returns void language plpgsql security definer set search_path = public as $$
+declare rid uuid;
+begin
+  if not has_permission('verification.review') then raise exception 'not allowed'; end if;
+  if p_status not in ('verified','rejected') then raise exception 'invalid status'; end if;
+  select id into rid from verification_records where user_id = p_user and subject in ('identity','agent') order by created_at desc limit 1;
+  if rid is null then
+    insert into verification_records(user_id, subject, status) values (p_user, 'identity', 'under_review') returning id into rid;
+  end if;
+  perform set_verification_outcome(rid, p_status, 'set from admin console');
+end $$;
+grant execute on function admin_set_verification(uuid, text) to authenticated;
+
+-- Called from SQL by request_transaction; also by the create-transaction path. Not callable by clients.
 create or replace function can_transact(p_user uuid, p_amount numeric, p_currency text) returns jsonb
 language plpgsql stable security definer set search_path = public as $$
 declare p profiles%rowtype; lim verification_limits%rowtype; used numeric;
@@ -351,14 +390,13 @@ create table if not exists fee_agreements (
   agent_id uuid not null references profiles(id),
   amount numeric(14,2) not null check (amount > 0),
   currency text not null references supported_currencies(code),
-  assignment_id uuid unique references assignments(id),       -- set once, when the buyer assigns the work
+  assignment_id uuid unique references assignments(id),
   agreed_at timestamptz not null default now()
 );
 alter table fee_agreements enable row level security;
 drop policy if exists fee_agreements_read on fee_agreements;
 create policy fee_agreements_read on fee_agreements for select using (buyer_id = auth.uid() or agent_id = auth.uid() or is_admin());
 
--- An accepted fee can never be edited. Only assignment_id may be set, once.
 create or replace function fee_agreements_guard() returns trigger language plpgsql as $$
 begin
   if tg_op = 'DELETE' then raise exception 'fee agreements cannot be deleted'; end if;
@@ -394,11 +432,10 @@ begin
   if exists (select 1 from fee_proposals where buyer_agent_id = ba.id and state = 'proposed') then raise exception 'respond to the open proposal first'; end if;
   insert into fee_proposals(buyer_agent_id, proposed_by, amount, currency) values (ba.id, me, round(p_amount, 2), p_currency) returning id into pid;
   other := case when me = ba.buyer_id then ba.agent_id else ba.buyer_id end;
-  insert into notifications(user_id, type, body, link) values (other, 'agent_fee_proposal', 'New agent fee proposal', '/agents/' || ba.id);
+  insert into notifications(user_id, type, body, link) values (other, 'Agent fee proposal', 'New agent fee proposal', '/agents/' || ba.id || '/chat');
   return pid;
 end $$;
 
--- Accept, reject or counter. Only the OTHER party can respond. Accepting creates the immutable agreement.
 create or replace function respond_fee(p_proposal uuid, p_action text, p_counter numeric default null)
 returns jsonb language plpgsql security definer set search_path = public as $$
 declare fp fee_proposals%rowtype; ba buyer_agents%rowtype; me uuid := auth.uid(); nid uuid;
@@ -407,12 +444,10 @@ begin
   if not found or fp.state <> 'proposed' then raise exception 'proposal is not open'; end if;
   select * into ba from buyer_agents where id = fp.buyer_agent_id;
   if me not in (ba.buyer_id, ba.agent_id) or me = fp.proposed_by then raise exception 'not allowed'; end if;
-
   if p_action = 'accept' then
     update fee_proposals set state = 'accepted', responded_at = now() where id = fp.id;
-    insert into fee_agreements(proposal_id, buyer_agent_id, buyer_id, agent_id, amount, currency)
-      values (fp.id, ba.id, ba.buyer_id, ba.agent_id, fp.amount, fp.currency);
-    insert into notifications(user_id, type, body, link) values (fp.proposed_by, 'agent_fee_accepted', 'Your fee proposal was accepted', '/agents/' || ba.id);
+    insert into fee_agreements(proposal_id, buyer_agent_id, buyer_id, agent_id, amount, currency) values (fp.id, ba.id, ba.buyer_id, ba.agent_id, fp.amount, fp.currency);
+    insert into notifications(user_id, type, body, link) values (fp.proposed_by, 'Agent fee acceptance', 'Your fee proposal was accepted', '/agents/' || ba.id || '/chat');
     return jsonb_build_object('ok', true, 'state', 'accepted', 'amount', fp.amount, 'currency', fp.currency);
   elsif p_action = 'reject' then
     update fee_proposals set state = 'rejected', responded_at = now() where id = fp.id;
@@ -421,7 +456,7 @@ begin
     if p_counter is null or p_counter <= 0 or round(p_counter, 2) = fp.amount then raise exception 'invalid counter amount'; end if;
     update fee_proposals set state = 'countered', responded_at = now() where id = fp.id;
     insert into fee_proposals(buyer_agent_id, proposed_by, amount, currency, parent_id) values (ba.id, me, round(p_counter, 2), fp.currency, fp.id) returning id into nid;
-    insert into notifications(user_id, type, body, link) values (fp.proposed_by, 'agent_fee_counter', 'You received a counteroffer', '/agents/' || ba.id);
+    insert into notifications(user_id, type, body, link) values (fp.proposed_by, 'Agent fee proposal', 'You received a counteroffer', '/agents/' || ba.id || '/chat');
     return jsonb_build_object('ok', true, 'state', 'countered', 'new_proposal', nid);
   end if;
   raise exception 'unknown action';
